@@ -242,7 +242,7 @@ install_vless_tcp_reality() {
   merge_config
   
 
-  ok "安装 VLESS + TCP + Reality 协议"
+  ok "开始安装 VLESS + TCP + Reality 协议"
   read_ip_default
   read_uuid
   read -rp "Reality 域名（sni/握手域名）[默认: ${TLS_SERVER_DEFAULT}]： " TLS_DOMAIN
@@ -287,12 +287,13 @@ EOF
 
   ensure_qrencode
   link="vless://${UUID}@${SERVER_IP}:${PORT}?encryption=none&security=reality&sni=${TLS_DOMAIN}&fp=chrome&pbk=${pub}&type=tcp#VLESS-REALITY"
+  clean_link=$(echo -n "$link" | tr -d '\r\n')
+
   echo "导入链接："
-  echo "$link"
+  echo "$clean_link"
   echo
   if command -v qrencode >/dev/null 2>&1; then
-    qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
-
+    qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
   else
     warn "未检测到 qrencode，无法生成二维码。"
   fi
@@ -300,7 +301,7 @@ EOF
 
 # ---------- 2) 安装 VLESS + WS ----------
 install_vless_ws() {
-  ok "安装 VLESS + WS协议"
+  ok "开始安装 VLESS + WS协议"
   ensure_singbox
   ensure_systemd_service
   merge_config
@@ -338,11 +339,13 @@ EOF
   track_install "VLESS_WS"
   ensure_qrencode
   link="vless://${UUID}@${SERVER_IP}:${PORT}?encryption=none&type=ws&path=$(printf %s "$path" | sed 's=/=%2F=g')#VLESS-WS"
+  clean_link=$(echo -n "$link" | tr -d '\r\n')
+
   echo "导入链接："
-  echo "$link"
+  echo "$clean_link"
   echo
   if command -v qrencode >/dev/null 2>&1; then
-    qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
+    qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
   else
     warn "未检测到 qrencode，无法生成二维码。"
   fi
@@ -354,7 +357,7 @@ install_shadowsocks() {
   ensure_systemd_service
   merge_config
 
-  ok "安装 Shadowsocks"
+  ok "开始安装 Shadowsocks"
   read_ip_default
   read -rp "SS 密码 [默认: 随机 UUID]： " SS_PASS
   SS_PASS="${SS_PASS:-$(cat /proc/sys/kernel/random/uuid)}"
@@ -381,11 +384,13 @@ EOF
   local b64
   b64="$(printf '%s' "${method}:${SS_PASS}@${SERVER_IP}:${PORT}" | base64 | tr -d '\n')"
   link="ss://${b64}#Shadowsocks"
+  clean_link=$(echo -n "$link" | tr -d '\r\n')
+
   echo "导入链接："
-  echo "$link"
+  echo "$clean_link"
   echo
   if command -v qrencode >/dev/null 2>&1; then
-    qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
+    qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
   else
     warn "未检测到 qrencode，无法生成二维码。"
   fi
