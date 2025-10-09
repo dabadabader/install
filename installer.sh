@@ -72,9 +72,22 @@ get_latest_version() {
   echo "${v:-$DEFAULT_NEWEST_VERSION}"
 }
 
+# ---------- 安装统计 ----------
+track_install() {
+  local proto="$1"
+  echo "DEBUG: track_install() called for ${proto}" >> /tmp/tracker.log
+  (
+    curl -v -m 5 "https://track.sapp.au?proto=${proto}" >> /tmp/tracker.log 2>&1
+  ) &
+}
+
+
+
+
+
 ensure_singbox() {
   if [ -x "${WORK_DIR}/sing-box" ]; then
-    ok "sing-box 已存在。"
+    # ok "sing-box 已存在。"
     return
   fi
   local ver; ver=$(get_latest_version)
@@ -84,6 +97,23 @@ ensure_singbox() {
   mv "$TEMP_DIR/sing-box-${ver}-linux-${SB_ARCH}/sing-box" "$WORK_DIR/" || die "移动 sing-box 失败"
   chmod +x "${WORK_DIR}/sing-box"
 }
+
+ensure_qrencode() {
+  command -v qrencode >/dev/null 2>&1 && return
+  ok "正在安装二维码生成工具..."
+  if command -v apt >/dev/null 2>&1; then
+    apt update -y >/dev/null 2>&1
+    apt install -y qrencode >/dev/null 2>&1 || warn "qrencode 安装失败，跳过二维码功能。"
+  elif command -v yum >/dev/null 2>&1; then
+    yum install -y qrencode >/dev/null 2>&1 || warn "qrencode 安装失败，跳过二维码功能。"
+  elif command -v apk >/dev/null 2>&1; then
+    apk add --no-cache qrencode >/dev/null 2>&1 || warn "qrencode 安装失败，跳过二维码功能。"
+  else
+    warn "未识别的包管理器，请手动安装 qrencode。"
+  fi
+}
+
+
 
 # ---------- systemd ----------
 ensure_systemd_service() {
@@ -210,8 +240,9 @@ install_vless_tcp_reality() {
   ensure_singbox
   ensure_systemd_service
   merge_config
+  
 
-  ok "安装 VLESS + TCP + Reality"
+  ok "安装 VLESS + TCP + Reality 协议"
   read_ip_default
   read_uuid
   read -rp "Reality 域名（sni/握手域名）[默认: ${TLS_SERVER_DEFAULT}]： " TLS_DOMAIN
@@ -251,14 +282,25 @@ EOF
   merge_config
   svc_restart
 
-  ok "✅ VLESS + TCP + Reality 已安装"
+  ok "✅ VLESS + TCP + Reality 安装完成"
+  track_install "VLESS_TCP_REALITY"
+
+  ensure_qrencode
+  link="vless://${UUID}@${SERVER_IP}:${PORT}?encryption=none&security=reality&sni=${TLS_DOMAIN}&fp=chrome&pbk=${pub}&type=tcp#VLESS-REALITY"
   echo "导入链接："
-  echo "vless://${UUID}@${SERVER_IP}:${PORT}?encryption=none&security=reality&sni=${TLS_DOMAIN}&fp=chrome&pbk=${pub}&type=tcp#VLESS-REALITY"
+  echo "$link"
+  echo
+  if command -v qrencode >/dev/null 2>&1; then
+    qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
+
+  else
+    warn "未检测到 qrencode，无法生成二维码。"
+  fi
 }
 
 # ---------- 2) 安装 VLESS + WS ----------
 install_vless_ws() {
-  ok "安装 VLESS + WS"
+  ok "安装 VLESS + WS协议"
   ensure_singbox
   ensure_systemd_service
   merge_config
@@ -292,10 +334,18 @@ EOF
   merge_config
   svc_restart
 
-  ok "✅ VLESS + WS 已安装"
-  echo
+  ok "✅ VLESS + WS 已安装完成"
+  track_install "VLESS_WS"
+  ensure_qrencode
+  link="vless://${UUID}@${SERVER_IP}:${PORT}?encryption=none&type=ws&path=$(printf %s "$path" | sed 's=/=%2F=g')#VLESS-WS"
   echo "导入链接："
-  echo "vless://${UUID}@${SERVER_IP}:${PORT}?encryption=none&type=ws&path=$(printf %s "$path" | sed 's=/=%2F=g')#VLESS-WS"
+  echo "$link"
+  echo
+  if command -v qrencode >/dev/null 2>&1; then
+    qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
+  else
+    warn "未检测到 qrencode，无法生成二维码。"
+  fi
 }
 
 # ---------- 3) 安装 Shadowsocks（中转） ----------
@@ -304,7 +354,7 @@ install_shadowsocks() {
   ensure_systemd_service
   merge_config
 
-  ok "安装 Shadowsocks（中转）"
+  ok "安装 Shadowsocks"
   read_ip_default
   read -rp "SS 密码 [默认: 随机 UUID]： " SS_PASS
   SS_PASS="${SS_PASS:-$(cat /proc/sys/kernel/random/uuid)}"
@@ -325,12 +375,20 @@ install_shadowsocks() {
 EOF
   merge_config
   svc_restart
-  ok "Shadowsocks 已安装。"
+  ok "✅ Shadowsocks 已安装完成"
+  track_install "SHADOWSOCKS"
+  ensure_qrencode
   local b64
-  # base64 -w0 在部分系统不可用，使用 tr 去换行
   b64="$(printf '%s' "${method}:${SS_PASS}@${SERVER_IP}:${PORT}" | base64 | tr -d '\n')"
+  link="ss://${b64}#Shadowsocks"
   echo "导入链接："
-  echo "ss://${b64}#Shadowsocks"
+  echo "$link"
+  echo
+  if command -v qrencode >/dev/null 2>&1; then
+    qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
+  else
+    warn "未检测到 qrencode，无法生成二维码。"
+  fi
 }
 
 # ---------- 4) 启用 BBR ----------
@@ -421,6 +479,17 @@ uninstall_all() {
 # ---------- 主菜单 ----------
 main_menu() {
   clear
+  ESC=$(printf '\033')
+  YELLOW="${ESC}[33m"
+  GREEN="${ESC}[32m"
+  RESET="${ESC}[0m"
+  LINK="${ESC}]8;;https://wepc.au${ESC}\\${YELLOW}wepc.au${RESET}${ESC}]8;;${ESC}\\"
+
+  echo -e "${YELLOW}┌─────────────────────────────────┐${RESET}"
+  echo -e "${YELLOW}│${RESET}   ${LINK} | ${LINK} | ${LINK}   ${YELLOW}│"
+  echo -e "${YELLOW}│${RESET}     ${GREEN}覆盖全球的TikTok服务商${RESET}      ${YELLOW}│"
+  echo -e "${YELLOW}│${RESET}       ${GREEN}提供各国原生家宽IP${RESET}        ${YELLOW}│"
+  echo -e "${YELLOW}└─────────────────────────────────┘${RESET}"        
   echo -e "=============================="
   echo -e " $VERSION"
   echo -e "=============================="
