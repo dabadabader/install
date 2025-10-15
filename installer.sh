@@ -222,20 +222,20 @@ EOF
 
 # ---------- 公共输入 ----------
 read_ip_default() {
-  local ip; ip=$(curl -s https://api.ip.sb/ip || true)
-  read -rp "服务器公网IP [默认: ${ip:-自动}]： " SERVER_IP
-  SERVER_IP="${SERVER_IP:-$ip}"
+  # Auto-detect public IP without asking user
+  SERVER_IP=$(curl -s https://api.ip.sb/ip || echo "127.0.0.1")
+  ok "检测到公网 IP: ${SERVER_IP}"
 }
 
 read_uuid() {
-  local def; def=$(cat /proc/sys/kernel/random/uuid)
-  read -rp "UUID [默认: $def]： " UUID
-  UUID="${UUID:-$def}"
+  # Auto-generate UUID silently
+  UUID=$(cat /proc/sys/kernel/random/uuid)
+  ok "已生成 UUID: ${UUID}"
 }
 
 read_port() {
   local hint="$1" def="$2"
-  read -rp "$hint [默认: $def]： " PORT
+  read -rp "$hint [按回车默认: $def]： " PORT
   PORT="${PORT:-$def}"
   [[ "$PORT" =~ ^[0-9]+$ ]] || die "端口必须为数字。"
   (( PORT>=100 && PORT<=65535 )) || die "端口必须在 100~65535。"
@@ -252,7 +252,7 @@ install_vless_tcp_reality() {
   ok "开始安装 VLESS + TCP + Reality 协议"
   read_ip_default
   read_uuid
-  read -rp "Reality 域名（sni/握手域名）[默认: ${TLS_SERVER_DEFAULT}]： " TLS_DOMAIN
+  read -rp "Reality 域名（sni/握手域名）[按回车默认: ${TLS_SERVER_DEFAULT}]： " TLS_DOMAIN
   TLS_DOMAIN="${TLS_DOMAIN:-$TLS_SERVER_DEFAULT}"
   read_port "监听端口" "$DEFAULT_PORT_REALITY"
 
@@ -296,7 +296,7 @@ EOF
   link="vless://${UUID}@${SERVER_IP}:${PORT}?encryption=none&security=reality&sni=${TLS_DOMAIN}&fp=chrome&pbk=${pub}&type=tcp#VLESS-REALITY"
   clean_link=$(echo -n "$link" | tr -d '\r\n')
   echo "导入链接："
-  echo -e "${YELLOW}${clean_link}${RESET}"
+  echo "$clean_link"
   echo
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
@@ -348,7 +348,7 @@ EOF
   clean_link=$(echo -n "$link" | tr -d '\r\n')
 
   echo "导入链接："
-  echo -e "${YELLOW}${clean_link}${RESET}"
+  echo "$clean_link"
 
   echo
   if command -v qrencode >/dev/null 2>&1; then
@@ -366,8 +366,9 @@ install_shadowsocks() {
 
   ok "开始安装 Shadowsocks"
   read_ip_default
-  read -rp "SS 密码 [默认: 随机 UUID]： " SS_PASS
-  SS_PASS="${SS_PASS:-$(cat /proc/sys/kernel/random/uuid)}"
+   SS_PASS=$(cat /proc/sys/kernel/random/uuid)
+  ok "已生成 Shadowsocks 密码: ${SS_PASS}"
+
   read_port "监听端口" "$DEFAULT_PORT_SS"
   local method="aes-128-gcm"
 
@@ -394,7 +395,7 @@ EOF
   clean_link=$(echo -n "$link" | tr -d '\r\n')
 
   echo "导入链接："
-  echo -e "${YELLOW}${clean_link}${RESET}"
+  echo "$clean_link"
 
   echo
   if command -v qrencode >/dev/null 2>&1; then
@@ -589,10 +590,10 @@ main_menu() {
   echo -e " $VERSION"
   echo -e "=============================="
   echo
-  echo "1) 安装 VLESS + TCP + Reality"
-  echo "2) 安装 VLESS + WS"
-  echo "3) 安装 Shadowsocks（适用中转）"
-  echo "4) 启用 BBR 加速"
+  echo "1) 安装 VLESS + TCP + Reality (直连选这里)"
+  echo "2) 安装 VLESS + WS (软路由选这里)"
+  echo "3) 安装 Shadowsocks (中转选这里)"
+  echo "4) 启用 BBR 加速 (必须开启)"
   echo "5) 修改端口"
   echo "6) 修改用户名/密码"
   echo "7) 卸载脚本"
