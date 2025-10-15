@@ -26,6 +26,13 @@ mkdir -p "$TEMP_DIR" "$WORK_DIR" "$CONF_DIR" "$LOG_DIR"
 ok()     { echo -e "\033[32m\033[01m$*\033[0m"; }
 warn()   { echo -e "\033[33m\033[01m$*\033[0m"; }
 err()    { echo -e "\033[31m\033[01m$*\033[0m" >&2; }
+
+# ---------- 颜色变量 ----------
+ESC=$(printf '\033')
+YELLOW="${ESC}[33m"
+GREEN="${ESC}[32m"
+RED="${ESC}[31m"
+RESET="${ESC}[0m"
 die()    { err "$*"; exit 1; }
 
 # ---------- 基础检测 ----------
@@ -288,9 +295,8 @@ EOF
   ensure_qrencode
   link="vless://${UUID}@${SERVER_IP}:${PORT}?encryption=none&security=reality&sni=${TLS_DOMAIN}&fp=chrome&pbk=${pub}&type=tcp#VLESS-REALITY"
   clean_link=$(echo -n "$link" | tr -d '\r\n')
-
   echo "导入链接："
-  echo "$clean_link"
+  echo -e "${YELLOW}${clean_link}${RESET}"
   echo
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
@@ -342,7 +348,8 @@ EOF
   clean_link=$(echo -n "$link" | tr -d '\r\n')
 
   echo "导入链接："
-  echo "$clean_link"
+  echo -e "${YELLOW}${clean_link}${RESET}"
+
   echo
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
@@ -387,7 +394,8 @@ EOF
   clean_link=$(echo -n "$link" | tr -d '\r\n')
 
   echo "导入链接："
-  echo "$clean_link"
+  echo -e "${YELLOW}${clean_link}${RESET}"
+
   echo
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
@@ -481,13 +489,95 @@ uninstall_all() {
   ok "已卸载完成。"
 }
 
+# ---------- 8) 查看已生成的链接 ----------
+show_generated_links() {
+  echo
+  echo "=============================="
+  echo " 已生成的链接与二维码"
+  echo "=============================="
+  echo
+  ensure_qrencode
+  local found_any=false
+
+  # --- VLESS Reality ---
+  local f1="${CONF_DIR}/10_vless_tcp_reality.json"
+  if [ -f "$f1" ]; then
+    found_any=true
+    local uuid port sni pub server_ip
+    uuid=$(jq -r '..|objects|select(has("users"))|.users[]?.uuid' "$f1" | head -n1)
+    port=$(jq -r '..|objects|select(has("listen_port"))|.listen_port' "$f1" | head -n1)
+    sni=$(jq -r '..|objects|select(has("server_name"))|.server_name' "$f1" | head -n1)
+    pub=$(cat "${CONF_DIR}/reality_public.key" 2>/dev/null || echo "")
+    server_ip=$(curl -s https://api.ip.sb/ip || echo "YOUR_IP")
+    link="vless://${uuid}@${server_ip}:${port}?encryption=none&security=reality&sni=${sni}&fp=chrome&pbk=${pub}&type=tcp#VLESS-REALITY"
+
+    echo "🔹 VLESS Reality"
+    echo -e "${YELLOW}${link}${RESET}"
+    echo
+    if command -v qrencode >/dev/null 2>&1; then
+      qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
+      echo
+    else
+      warn "未检测到 qrencode，无法生成二维码。"
+    fi
+  fi
+
+  # --- VLESS WS ---
+  local f2="${CONF_DIR}/11_vless_ws.json"
+  if [ -f "$f2" ]; then
+    found_any=true
+    local uuid port path server_ip
+    uuid=$(jq -r '..|objects|select(has("users"))|.users[]?.uuid' "$f2" | head -n1)
+    port=$(jq -r '..|objects|select(has("listen_port"))|.listen_port' "$f2" | head -n1)
+    path=$(jq -r '..|objects|select(has("transport"))|.transport.path' "$f2" | head -n1)
+    server_ip=$(curl -s https://api.ip.sb/ip || echo "YOUR_IP")
+    link="vless://${uuid}@${server_ip}:${port}?encryption=none&type=ws&path=$(printf %s "$path" | sed 's=/=%2F=g')#VLESS-WS"
+
+    echo "🔹 VLESS WS"
+    echo -e "${YELLOW}${link}${RESET}"
+    echo
+    if command -v qrencode >/dev/null 2>&1; then
+      qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
+      echo
+    else
+      warn "未检测到 qrencode，无法生成二维码。"
+    fi
+  fi
+
+  # --- Shadowsocks ---
+  local f3="${CONF_DIR}/12_ss.json"
+  if [ -f "$f3" ]; then
+    found_any=true
+    local pass port method server_ip b64
+    pass=$(jq -r '..|objects|select(has("password"))|.password' "$f3" | head -n1)
+    port=$(jq -r '..|objects|select(has("listen_port"))|.listen_port' "$f3" | head -n1)
+    method=$(jq -r '..|objects|select(has("method"))|.method' "$f3" | head -n1)
+    server_ip=$(curl -s https://api.ip.sb/ip || echo "YOUR_IP")
+    b64=$(printf '%s' "${method}:${pass}@${server_ip}:${port}" | base64 | tr -d '\n')
+    link="ss://${b64}#Shadowsocks"
+
+    echo "🔹 Shadowsocks"
+    echo -e "${YELLOW}${link}${RESET}"
+    echo
+    if command -v qrencode >/dev/null 2>&1; then
+      qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
+      echo
+    else
+      warn "未检测到 qrencode，无法生成二维码。"
+    fi
+  fi
+
+  if [ "$found_any" = false ]; then
+    warn "未检测到任何已安装的协议配置。"
+  fi
+}
+
+
+
 # ---------- 主菜单 ----------
 main_menu() {
   clear
-  ESC=$(printf '\033')
-  YELLOW="${ESC}[33m"
-  GREEN="${ESC}[32m"
-  RESET="${ESC}[0m"
+
   LINK="${ESC}]8;;https://wepc.au${ESC}\\${YELLOW}wepc.au${RESET}${ESC}]8;;${ESC}\\"
 
   echo -e "${YELLOW}┌─────────────────────────────────┐${RESET}"
@@ -506,9 +596,10 @@ main_menu() {
   echo "5) 修改端口"
   echo "6) 修改用户名/密码"
   echo "7) 卸载脚本"
-  echo "8) 退出"
+  echo "8) 查看已生成的链接"
+  echo "9) 退出"
   echo
-  read -rp "请选择 [1-8]: " opt
+  read -rp "请选择 [1-9]: " opt
   case "$opt" in
     1) install_vless_tcp_reality ;;
     2) install_vless_ws ;;
@@ -517,12 +608,12 @@ main_menu() {
     5) change_port ;;
     6) change_user_cred ;;
     7) uninstall_all ;;
-    8) exit 0 ;;
+    8) show_generated_links ;;
+    9) exit 0 ;;
     *) echo "无效选择";;
   esac
-  echo
-  read -rp "按回车返回菜单..." _
-  main_menu
+
+
 }
 
 # ---------- 引导 ----------
