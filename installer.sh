@@ -300,6 +300,9 @@ EOF
   echo
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
+    echo
+     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+  echo
   else
     warn "未检测到 qrencode，无法生成二维码。"
   fi
@@ -353,6 +356,9 @@ EOF
   echo
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
+    echo
+     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+  echo
   else
     warn "未检测到 qrencode，无法生成二维码。"
   fi
@@ -400,6 +406,9 @@ EOF
   echo
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
+    echo
+     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+    echo
   else
     warn "未检测到 qrencode，无法生成二维码。"
   fi
@@ -414,6 +423,9 @@ enable_bbr() {
   sysctl -p >/dev/null 2>&1 || true
   sysctl net.ipv4.tcp_congestion_control
   ok "BBR 处理完成。"
+  echo
+   echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+  echo
 }
 
 # ---------- 5) 修改端口 ----------
@@ -436,6 +448,9 @@ change_port() {
   merge_config
   svc_restart
   ok "端口已修改。"
+  echo
+   echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+  echo
 }
 
 # ---------- 6) 修改用户名/密码 ----------
@@ -456,6 +471,9 @@ change_user_cred() {
       merge_config
       svc_restart
       ok "VLESS UUID 已修改。"
+      echo
+       echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+      echo
       ;;
     2)
       local f="${CONF_DIR}/12_ss.json"
@@ -466,6 +484,9 @@ change_user_cred() {
       merge_config
       svc_restart
       ok "Shadowsocks 密码已修改。"
+      echo
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+      echo
       ;;
     *) die "无效选择" ;;
   esac
@@ -488,6 +509,7 @@ uninstall_all() {
   fi
   rm -rf "${WORK_DIR}"
   ok "已卸载完成。"
+  
 }
 
 # ---------- 8) 查看已生成的链接 ----------
@@ -518,6 +540,8 @@ show_generated_links() {
     if command -v qrencode >/dev/null 2>&1; then
       qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
       echo
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+      echo
     else
       warn "未检测到 qrencode，无法生成二维码。"
     fi
@@ -539,6 +563,8 @@ show_generated_links() {
     echo
     if command -v qrencode >/dev/null 2>&1; then
       qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
+      echo
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
       echo
     else
       warn "未检测到 qrencode，无法生成二维码。"
@@ -563,6 +589,8 @@ show_generated_links() {
     if command -v qrencode >/dev/null 2>&1; then
       qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
       echo
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+      echo  
     else
       warn "未检测到 qrencode，无法生成二维码。"
     fi
@@ -571,6 +599,23 @@ show_generated_links() {
   if [ "$found_any" = false ]; then
     warn "未检测到任何已安装的协议配置。"
   fi
+}
+
+
+# ---------- 快捷命令 ----------
+install_shortcut() {
+  local cmd_path="/usr/local/bin/menu"
+
+  # Create shortcut script
+  cat > "$cmd_path" <<'EOF'
+#!/usr/bin/env bash
+bash <(curl -Ls https://raw.githubusercontent.com/dabadabader/install/main/installer.sh)
+EOF
+
+  chmod +x "$cmd_path"
+
+  # Show message clearly to user
+  echo -e "\033[32m\033[01m❔重新打开安装菜单请输入：\033[0m\033[33mmenu\033[0m"
 }
 
 
@@ -617,9 +662,13 @@ main_menu() {
 
 }
 
+
 # ---------- 引导 ----------
 need_root
 detect_arch
 detect_os
 install_deps
+install_shortcut
 main_menu
+
+
