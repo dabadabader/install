@@ -218,12 +218,15 @@ EOF
 }
 
 
-
-
 # ---------- 公共输入 ----------
 read_ip_default() {
   # Auto-detect public IP without asking user
-  SERVER_IP=$(curl -s https://api.ip.sb/ip || echo "127.0.0.1")
+  SERVER_IP=$(
+  curl -s https://api.ipify.org ||
+  curl -s https://ifconfig.me ||
+  curl -s https://icanhazip.com ||
+  echo "127.0.0.1"
+)
   ok "检测到公网 IP: ${SERVER_IP}"
 }
 
