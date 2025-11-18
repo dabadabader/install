@@ -640,7 +640,7 @@ main_menu() {
   echo
   echo "1) 安装 VLESS + TCP + Reality (直连选这里)"
   echo "2) 安装 VLESS + WS (软路由选这里)"
-  echo "3) 安装 Shadowsocks (中转选这里)"
+  echo "3) 安装 Shadowsocks (明文协议, IP容易被墙, 不建议使用)"
   echo "4) 启用 BBR 加速 (必须开启)"
   echo "5) 修改端口"
   echo "6) 修改用户名/密码"
@@ -661,8 +661,6 @@ main_menu() {
     9) exit 0 ;;
     *) echo "无效选择";;
   esac
-
-
 }
 
 
