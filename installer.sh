@@ -692,16 +692,18 @@ main_menu() {
   clear
 
   LINK="${ESC}]8;;https://wepc.au${ESC}\\${YELLOW}wepc.au${RESET}${ESC}]8;;${ESC}\\"
+LINK_PINGIP="${ESC}]8;;https://pingip.cn${ESC}\\${YELLOW}pingip.cn${RESET}${ESC}]8;;${ESC}\\"
+
 
   echo -e "${YELLOW}┌─────────────────────────────────┐${RESET}"
   echo -e "${YELLOW}│${RESET}   ${LINK} | ${LINK} | ${LINK}   ${YELLOW}│"
   echo -e "${YELLOW}│${RESET}     ${GREEN}覆盖全球的TikTok服务商${RESET}      ${YELLOW}│"
   echo -e "${YELLOW}│${RESET}       ${GREEN}提供各国原生家宽IP${RESET}        ${YELLOW}│"
   echo -e "${YELLOW}└─────────────────────────────────┘${RESET}"        
-  echo -e "=============================="
-  echo -e " $VERSION"
-  echo -e "=============================="
-  echo
+echo -e "==================================="
+echo -e "    ${GREEN}查询IP可以使用:${RESET}  ${LINK_PINGIP}"
+echo -e "==================================="
+echo
     echo "1) 安装 VLESS + TCP + Reality (直连选这里)"
   echo "2) 安装 VMESS + WS (软路由选这里)"
   echo "3) 安装 Shadowsocks (明文协议, IP容易被墙, 不建议使用)"
