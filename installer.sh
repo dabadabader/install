@@ -12,10 +12,11 @@ TEMP_DIR='/tmp/proxyinstaller'
 WORK_DIR='/etc/sing-box'
 LOG_DIR="${WORK_DIR}/logs"
 CONF_DIR="${WORK_DIR}/conf"
-DEFAULT_PORT_REALITY=443
-DEFAULT_PORT_WS=2080
-DEFAULT_PORT_SS=8388
-TLS_SERVER_DEFAULT='www.cloudflare.com'
+DEFAULT_PORT_REALITY=$((RANDOM % 64512 + 1024))
+DEFAULT_PORT_WS=$((RANDOM % 64512 + 1024))
+DEFAULT_PORT_SS=$((RANDOM % 64512 + 1024))
+TLS_SERVERS=('www.cloudflare.com' 'www.microsoft.com' 'www.apple.com' 'www.amazon.com' 'www.google.com' 'www.github.com' 'www.spotify.com' 'www.netflix.com' 'www.youtube.com' 'www.reddit.com')
+TLS_SERVER_DEFAULT="${TLS_SERVERS[$((RANDOM % ${#TLS_SERVERS[@]}))]}"
 DEFAULT_NEWEST_VERSION='1.12.0'
 export DEBIAN_FRONTEND=noninteractive
 
