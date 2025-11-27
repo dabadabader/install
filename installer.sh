@@ -623,7 +623,13 @@ show_generated_links() {
     port=$(jq -r '..|objects|select(has("listen_port"))|.listen_port' "$f2" | head -n1)
     path=$(jq -r '..|objects|select(has("transport"))|.transport.path' "$f2" | head -n1)
     server_ip=$(curl -s https://api.ip.sb/ip || echo "YOUR_IP")
-    link="vless://${uuid}@${server_ip}:${port}?encryption=none&type=ws&path=$(printf %s "$path" | sed 's=/=%2F=g')#VLESS-WS"
+    
+    # Generate VMESS link (not VLESS)
+    local json b64
+    json=$(printf '{"v":"2","ps":"VMESS-WS","add":"%s","port":"%s","id":"%s","aid":"0","net":"ws","type":"none","host":"","path":"%s","tls":""}' \
+          "$server_ip" "$port" "$uuid" "$path")
+    b64=$(echo -n "$json" | base64 -w0)
+    link="vmess://${b64}"
 
     echo "🔹 VMESS WS"
     echo -e "${YELLOW}${link}${RESET}"
