@@ -99,10 +99,29 @@ ensure_singbox() {
   fi
   local ver; ver=$(get_latest_version)
   ok "下载 sing-box v${ver} (${SB_ARCH}) ..."
-  local url="https://github.com/SagerNet/sing-box/releases/download/v${ver}/sing-box-${ver}-linux-${SB_ARCH}.tar.gz"
-  wget -qO- "${GH_PROXY:+$GH_PROXY}$url" | tar xz -C "$TEMP_DIR" || die "下载/解压 sing-box 失败"
+  
+  local official_url="https://github.com/SagerNet/sing-box/releases/download/v${ver}/sing-box-${ver}-linux-${SB_ARCH}.tar.gz"
+  local tarball="${TEMP_DIR}/sing-box.tar.gz"
+  
+  # Try with proxy first, then direct from official
+  if [ -n "$GH_PROXY" ]; then
+    ok "尝试通过代理下载..."
+    wget -q --timeout=30 --tries=2 -O "$tarball" "${GH_PROXY}${official_url}" || {
+      warn "代理下载失败，尝试直接下载..."
+      wget -q --timeout=30 --tries=2 -O "$tarball" "$official_url" || die "下载 sing-box 失败"
+    }
+  else
+    wget -q --timeout=30 --tries=2 -O "$tarball" "$official_url" || die "下载 sing-box 失败"
+  fi
+  
+  # Verify the file is not empty
+  [ -s "$tarball" ] || die "下载的文件为空"
+  
+  # Extract
+  tar xzf "$tarball" -C "$TEMP_DIR" || die "解压 sing-box 失败"
   mv "$TEMP_DIR/sing-box-${ver}-linux-${SB_ARCH}/sing-box" "$WORK_DIR/" || die "移动 sing-box 失败"
   chmod +x "${WORK_DIR}/sing-box"
+  rm -f "$tarball"
 }
 
 ensure_qrencode() {
