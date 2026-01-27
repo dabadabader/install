@@ -311,6 +311,7 @@ install_vless_tcp_reality() {
   read -rp "Reality 域名（sni/握手域名）[按回车默认: ${TLS_SERVER_DEFAULT}]： " TLS_DOMAIN
   TLS_DOMAIN="${TLS_DOMAIN:-$TLS_SERVER_DEFAULT}"
   read_port "监听端口" "$DEFAULT_PORT_REALITY"
+  enable_bbr
 
   # 生成密钥对
   local kp priv pub
@@ -390,6 +391,7 @@ install_vmess_ws() {
   read_uuid
   read_port "监听端口" "$DEFAULT_PORT_WS"
   PORT=$(find_free_port "$PORT")  
+  enable_bbr
 
   local path="/${UUID}-vmess"
 
@@ -455,6 +457,7 @@ install_shadowsocks() {
   ok "已生成 Shadowsocks 密码: ${SS_PASS}"
 
   read_port "监听端口" "$DEFAULT_PORT_SS"
+  enable_bbr
   local method="aes-128-gcm"
 
   cat > "${CONF_DIR}/12_ss.json" <<EOF
@@ -506,6 +509,8 @@ enable_bbr() {
    echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
   echo
 }
+
+# （已取消交互）BBR 在安装步骤中自动启用
 
 # ---------- 6) 修改端口 ----------
 change_port() {
@@ -732,7 +737,7 @@ echo
     echo "1) 安装 VLESS + TCP + Reality (直连选这里)"
   echo "2) 安装 VMESS + WS (软路由选这里)"
   echo "3) 安装 Shadowsocks (明文协议, IP容易被墙, 不建议使用)"
-  echo "4) 启用 BBR 加速 (必须开启)"
+  echo "4) 启用 BBR 加速 (已自动启用)"
   echo "5) 修改端口"
   echo "6) 修改用户名/密码"
   echo "7) 卸载脚本"
