@@ -5,7 +5,7 @@
 ## 功能特性
 
 - 安装 **VLESS + TCP + Reality** 协议  
-- 安装 **VLESS + WS (WebSocket)** 协议  
+- 安装 **VMESS + WS (WebSocket)** 协议  
 - 安装 **Shadowsocks (中转)** 协议  
 - 一键启用 **BBR 加速**  
 - 支持修改端口 / 用户名 / 密码  
