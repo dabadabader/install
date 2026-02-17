@@ -270,15 +270,11 @@ read_ip_default() {
   ok "检测到公网 IP: ${SERVER_IP}"
 }
 
-generate_strong_password() {
-  # Generate cryptographically strong 32-character password
-  # Using openssl with base64, filtered to alphanumeric + symbols
-  openssl rand -base64 32 | tr -d '/' | cut -c1-32
-}
+
 
 read_uuid() {
   # Auto-generate strong random UUID (32-char alphanumeric)
-  UUID=$(generate_strong_password)
+  UUID=$(cat /proc/sys/kernel/random/uuid)
   ok "已生成密码 UUID: ${UUID}"
 }
 
@@ -466,8 +462,9 @@ install_shadowsocks() {
 
   ok "开始安装 Shadowsocks"
   read_ip_default
-  SS_PASS=$(generate_strong_password)
-  ok "已生成强 Shadowsocks 密码: ${SS_PASS}"
+  read_uuid
+  SS_PASS="$UUID"
+  ok "已生成 Shadowsocks 密码: ${SS_PASS}"
 
   # Shadowsocks 默认使用随机端口，以增强安全性
   DEFAULT_PORT_SS=$(generate_random_port)
