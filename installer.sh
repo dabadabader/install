@@ -12,12 +12,6 @@ TEMP_DIR='/tmp/proxyinstaller'
 WORK_DIR='/etc/sing-box'
 LOG_DIR="${WORK_DIR}/logs"
 CONF_DIR="${WORK_DIR}/conf"
-<<<<<<< HEAD
-=======
-DEFAULT_PORT_REALITY=443
-DEFAULT_PORT_WS=2080
-DEFAULT_PORT_SS=8388
->>>>>>> 9418dfc2666b6972fa55759a1404a7b1869b680f
 TLS_SERVER_DEFAULT='www.cloudflare.com'
 DEFAULT_NEWEST_VERSION='1.12.0'
 export DEBIAN_FRONTEND=noninteractive
@@ -438,11 +432,7 @@ EOF
   svc_restart
 
   ok "✅ VMESS + WS 已安装完成"
-<<<<<<< HEAD
 
-=======
-  track_install "VMESS_WS"
->>>>>>> 9418dfc2666b6972fa55759a1404a7b1869b680f
   ensure_qrencode
   json=$(printf '{"v":"2","ps":"VMESS-WS","add":"%s","port":"%s","id":"%s","aid":"0","net":"ws","type":"none","host":"","path":"%s","tls":""}' \
         "$SERVER_IP" "$PORT" "$UUID" "$path")
@@ -553,7 +543,6 @@ change_port() {
 
   [ -f "$file" ] || die "未检测到对应协议配置，请先安装该协议。"
 
-<<<<<<< HEAD
   read -rp "新端口 [按回车随机，或输入具体端口号]： " PORT
   
   if [ -z "$PORT" ]; then
@@ -563,9 +552,6 @@ change_port() {
     [[ "$PORT" =~ ^[0-9]+$ ]] || die "端口必须为数字。"
     (( PORT>=100 && PORT<=65535 )) || die "端口必须在 100~65535。"
   fi
-=======
-  read_port "新端口" "8081"
->>>>>>> 9418dfc2666b6972fa55759a1404a7b1869b680f
 
   jq --argjson p "$PORT" '(.. | objects | select(has("listen_port"))).listen_port = $p' \
     "$file" > "${file}.tmp"
