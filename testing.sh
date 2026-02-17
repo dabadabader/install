@@ -12,12 +12,9 @@ TEMP_DIR='/tmp/proxyinstaller'
 WORK_DIR='/etc/sing-box'
 LOG_DIR="${WORK_DIR}/logs"
 CONF_DIR="${WORK_DIR}/conf"
-<<<<<<< HEAD
-=======
 DEFAULT_PORT_REALITY=443
 DEFAULT_PORT_WS=2080
 DEFAULT_PORT_SS=8388
->>>>>>> 9418dfc2666b6972fa55759a1404a7b1869b680f
 TLS_SERVER_DEFAULT='www.cloudflare.com'
 DEFAULT_NEWEST_VERSION='1.12.0'
 export DEBIAN_FRONTEND=noninteractive
@@ -80,6 +77,15 @@ get_latest_version() {
   v=$(wget -qO- "${GH_PROXY:+$GH_PROXY}https://api.github.com/repos/SagerNet/sing-box/releases/latest" \
       | grep -oE '"tag_name":\s*"v[0-9.]+"' | head -n1 | tr -dc '0-9.')
   echo "${v:-$DEFAULT_NEWEST_VERSION}"
+}
+
+# ---------- 安装统计 ----------
+track_install() {
+  local proto="$1"
+  echo "DEBUG: track_install() called for ${proto}" >> /tmp/tracker.log
+  (
+    curl -v -m 5 "https://track.sapp.au?proto=${proto}" >> /tmp/tracker.log 2>&1
+  ) &
 }
 
 
@@ -276,39 +282,18 @@ read_ip_default() {
   ok "检测到公网 IP: ${SERVER_IP}"
 }
 
-generate_strong_password() {
-  # Generate cryptographically strong 32-character password
-  # Using openssl with base64, filtered to alphanumeric + symbols
-  openssl rand -base64 32 | tr -d '/' | cut -c1-32
-}
-
 read_uuid() {
-  # Auto-generate strong random UUID (32-char alphanumeric)
-  UUID=$(generate_strong_password)
-  ok "已生成密码 UUID: ${UUID}"
-}
-
-generate_random_port() {
-  # Generate random port between 10000-65535 to avoid well-known ports
-  local port=$(shuf -i 10000-65535 -n 1)
-  # Verify port is not already in use
-  while ss -tuln | grep -q ":$port "; do
-    port=$(shuf -i 10000-65535 -n 1)
-  done
-  echo "$port"
+  # Auto-generate UUID silently
+  UUID=$(cat /proc/sys/kernel/random/uuid)
+  ok "已生成 UUID: ${UUID}"
 }
 
 read_port() {
   local hint="$1" def="$2"
-  read -rp "$hint [按回车随机，或输入具体端口号]： " PORT
-  
-  if [ -z "$PORT" ]; then
-    PORT=$(generate_random_port)
-    ok "已随机生成端口: ${PORT}"
-  else
-    [[ "$PORT" =~ ^[0-9]+$ ]] || die "端口必须为数字。"
-    (( PORT>=100 && PORT<=65535 )) || die "端口必须在 100~65535。"
-  fi
+  read -rp "$hint [按回车默认: $def]： " PORT
+  PORT="${PORT:-$def}"
+  [[ "$PORT" =~ ^[0-9]+$ ]] || die "端口必须为数字。"
+  (( PORT>=100 && PORT<=65535 )) || die "端口必须在 100~65535。"
 }
 
 # ---------- 1) 安装 VLESS + TCP + Reality ----------
@@ -325,10 +310,7 @@ install_vless_tcp_reality() {
   read_uuid
   read -rp "Reality 域名（sni/握手域名）[按回车默认: ${TLS_SERVER_DEFAULT}]： " TLS_DOMAIN
   TLS_DOMAIN="${TLS_DOMAIN:-$TLS_SERVER_DEFAULT}"
-  # VLESS Reality 默认使用随机端口，以增强安全性
-  DEFAULT_PORT_REALITY=$(generate_random_port)
   read_port "监听端口" "$DEFAULT_PORT_REALITY"
-  enable_bbr
 
   # 生成密钥对
   local kp priv pub
@@ -364,7 +346,7 @@ EOF
   svc_restart
 
   ok "✅ VLESS + TCP + Reality 安装完成"
-
+  track_install "VLESS_TCP_REALITY"
 
   ensure_qrencode
   link="vless://${UUID}@${SERVER_IP}:${PORT}?encryption=none&security=reality&sni=${TLS_DOMAIN}&fp=chrome&pbk=${pub}&type=tcp#VLESS-REALITY"
@@ -406,11 +388,8 @@ install_vmess_ws() {
 
   read_ip_default
   read_uuid
-  # VMESS WS 默认使用随机端口，以增强安全性
-  DEFAULT_PORT_WS=$(generate_random_port)
   read_port "监听端口" "$DEFAULT_PORT_WS"
   PORT=$(find_free_port "$PORT")  
-  enable_bbr
 
   local path="/${UUID}-vmess"
 
@@ -438,11 +417,7 @@ EOF
   svc_restart
 
   ok "✅ VMESS + WS 已安装完成"
-<<<<<<< HEAD
-
-=======
   track_install "VMESS_WS"
->>>>>>> 9418dfc2666b6972fa55759a1404a7b1869b680f
   ensure_qrencode
   json=$(printf '{"v":"2","ps":"VMESS-WS","add":"%s","port":"%s","id":"%s","aid":"0","net":"ws","type":"none","host":"","path":"%s","tls":""}' \
         "$SERVER_IP" "$PORT" "$UUID" "$path")
@@ -476,13 +451,10 @@ install_shadowsocks() {
 
   ok "开始安装 Shadowsocks"
   read_ip_default
-  SS_PASS=$(generate_strong_password)
-  ok "已生成强 Shadowsocks 密码: ${SS_PASS}"
+   SS_PASS=$(cat /proc/sys/kernel/random/uuid)
+  ok "已生成 Shadowsocks 密码: ${SS_PASS}"
 
-  # Shadowsocks 默认使用随机端口，以增强安全性
-  DEFAULT_PORT_SS=$(generate_random_port)
   read_port "监听端口" "$DEFAULT_PORT_SS"
-  enable_bbr
   local method="aes-128-gcm"
 
   cat > "${CONF_DIR}/12_ss.json" <<EOF
@@ -500,7 +472,7 @@ EOF
   merge_config
   svc_restart
   ok "✅ Shadowsocks 已安装完成"
-
+  track_install "SHADOWSOCKS"
   ensure_qrencode
   local b64
   b64="$(printf '%s' "${method}:${SS_PASS}@${SERVER_IP}:${PORT}" | base64 | tr -d '\n')"
@@ -535,8 +507,6 @@ enable_bbr() {
   echo
 }
 
-# （已取消交互）BBR 在安装步骤中自动启用
-
 # ---------- 6) 修改端口 ----------
 change_port() {
   echo "选择要修改端口的协议："
@@ -553,19 +523,7 @@ change_port() {
 
   [ -f "$file" ] || die "未检测到对应协议配置，请先安装该协议。"
 
-<<<<<<< HEAD
-  read -rp "新端口 [按回车随机，或输入具体端口号]： " PORT
-  
-  if [ -z "$PORT" ]; then
-    PORT=$(generate_random_port)
-    ok "已随机生成端口: ${PORT}"
-  else
-    [[ "$PORT" =~ ^[0-9]+$ ]] || die "端口必须为数字。"
-    (( PORT>=100 && PORT<=65535 )) || die "端口必须在 100~65535。"
-  fi
-=======
   read_port "新端口" "8081"
->>>>>>> 9418dfc2666b6972fa55759a1404a7b1869b680f
 
   jq --argjson p "$PORT" '(.. | objects | select(has("listen_port"))).listen_port = $p' \
     "$file" > "${file}.tmp"
@@ -774,7 +732,7 @@ echo
     echo "1) 安装 VLESS + TCP + Reality (直连选这里)"
   echo "2) 安装 VMESS + WS (软路由选这里)"
   echo "3) 安装 Shadowsocks (明文协议, IP容易被墙, 不建议使用)"
-  echo "4) 启用 BBR 加速 (已自动启用)"
+  echo "4) 启用 BBR 加速 (必须开启)"
   echo "5) 修改端口"
   echo "6) 修改用户名/密码"
   echo "7) 卸载脚本"
