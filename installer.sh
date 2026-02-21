@@ -12,6 +12,9 @@ TEMP_DIR='/tmp/proxyinstaller'
 WORK_DIR='/etc/sing-box'
 LOG_DIR="${WORK_DIR}/logs"
 CONF_DIR="${WORK_DIR}/conf"
+DEFAULT_PORT_REALITY=443
+DEFAULT_PORT_WS=2080
+DEFAULT_PORT_SS=8388
 TLS_SERVER_DEFAULT='www.cloudflare.com'
 DEFAULT_NEWEST_VERSION='1.12.0'
 export DEBIAN_FRONTEND=noninteractive
@@ -270,35 +273,18 @@ read_ip_default() {
   ok "检测到公网 IP: ${SERVER_IP}"
 }
 
-
-
 read_uuid() {
-  # Auto-generate strong random UUID (32-char alphanumeric)
+  # Auto-generate UUID silently
   UUID=$(cat /proc/sys/kernel/random/uuid)
-  ok "已生成密码 UUID: ${UUID}"
-}
-
-generate_random_port() {
-  # Generate random port between 10000-65535 to avoid well-known ports
-  local port=$(shuf -i 10000-65535 -n 1)
-  # Verify port is not already in use
-  while ss -tuln | grep -q ":$port "; do
-    port=$(shuf -i 10000-65535 -n 1)
-  done
-  echo "$port"
+  ok "已生成 UUID: ${UUID}"
 }
 
 read_port() {
   local hint="$1" def="$2"
-  read -rp "$hint [按回车随机，或输入具体端口号]： " PORT
-  
-  if [ -z "$PORT" ]; then
-    PORT=$(generate_random_port)
-    ok "已随机生成端口: ${PORT}"
-  else
-    [[ "$PORT" =~ ^[0-9]+$ ]] || die "端口必须为数字。"
-    (( PORT>=100 && PORT<=65535 )) || die "端口必须在 100~65535。"
-  fi
+  read -rp "$hint [按回车默认: $def]： " PORT
+  PORT="${PORT:-$def}"
+  [[ "$PORT" =~ ^[0-9]+$ ]] || die "端口必须为数字。"
+  (( PORT>=100 && PORT<=65535 )) || die "端口必须在 100~65535。"
 }
 
 # ---------- 1) 安装 VLESS + TCP + Reality ----------
@@ -315,8 +301,6 @@ install_vless_tcp_reality() {
   read_uuid
   read -rp "Reality 域名（sni/握手域名）[按回车默认: ${TLS_SERVER_DEFAULT}]： " TLS_DOMAIN
   TLS_DOMAIN="${TLS_DOMAIN:-$TLS_SERVER_DEFAULT}"
-  # VLESS Reality 默认使用随机端口，以增强安全性
-  DEFAULT_PORT_REALITY=$(generate_random_port)
   read_port "监听端口" "$DEFAULT_PORT_REALITY"
   enable_bbr
 
@@ -396,8 +380,6 @@ install_vmess_ws() {
 
   read_ip_default
   read_uuid
-  # VMESS WS 默认使用随机端口，以增强安全性
-  DEFAULT_PORT_WS=$(generate_random_port)
   read_port "监听端口" "$DEFAULT_PORT_WS"
   PORT=$(find_free_port "$PORT")  
   enable_bbr
@@ -462,12 +444,9 @@ install_shadowsocks() {
 
   ok "开始安装 Shadowsocks"
   read_ip_default
-  read_uuid
-  SS_PASS="$UUID"
+   SS_PASS=$(cat /proc/sys/kernel/random/uuid)
   ok "已生成 Shadowsocks 密码: ${SS_PASS}"
 
-  # Shadowsocks 默认使用随机端口，以增强安全性
-  DEFAULT_PORT_SS=$(generate_random_port)
   read_port "监听端口" "$DEFAULT_PORT_SS"
   enable_bbr
   local method="aes-128-gcm"
@@ -540,15 +519,7 @@ change_port() {
 
   [ -f "$file" ] || die "未检测到对应协议配置，请先安装该协议。"
 
-  read -rp "新端口 [按回车随机，或输入具体端口号]： " PORT
-  
-  if [ -z "$PORT" ]; then
-    PORT=$(generate_random_port)
-    ok "已随机生成端口: ${PORT}"
-  else
-    [[ "$PORT" =~ ^[0-9]+$ ]] || die "端口必须为数字。"
-    (( PORT>=100 && PORT<=65535 )) || die "端口必须在 100~65535。"
-  fi
+  read_port "新端口" "8081"
 
   jq --argjson p "$PORT" '(.. | objects | select(has("listen_port"))).listen_port = $p' \
     "$file" > "${file}.tmp"
