@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+echo -e "\033[33m\033[01m脚本维护中，请使用bash <(curl -Ls https://raw.githubusercontent.com/FranzKafkaYu/x-ui/master/install.sh)\033[0m"
+exit 1
 # =====================================================
 # Proxy Installer
 # Version: 1.0
