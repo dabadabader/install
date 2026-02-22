@@ -332,6 +332,8 @@ install_vless_tcp_reality() {
   PORT=$(get_protocol_port "vless_tcp_reality")
   ok "自动分配端口: $PORT"
   enable_bbr
+  PORT_HOPPING_START=$MIN_HOPPING_PORT
+  PORT_HOPPING_END=$((PORT_HOPPING_START + 99))
   setup_port_hopping_nat
 
   # 生成密钥对
@@ -433,6 +435,8 @@ install_vmess_ws() {
   PORT=$(find_free_port "$PORT")
   ok "自动分配端口: $PORT"
   enable_bbr
+  PORT_HOPPING_START=$MIN_HOPPING_PORT
+  PORT_HOPPING_END=$((PORT_HOPPING_START + 99))
   setup_port_hopping_nat
 
   local path="/${UUID}-vmess"
@@ -517,6 +521,8 @@ install_shadowsocks() {
   PORT=$(get_protocol_port "shadowsocks")
   ok "自动分配端口: $PORT"
   enable_bbr
+  PORT_HOPPING_START=$MIN_HOPPING_PORT
+  PORT_HOPPING_END=$((PORT_HOPPING_START + 99))
   setup_port_hopping_nat
   local method="2022-blake3-aes-128-gcm"
 
