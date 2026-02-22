@@ -8,9 +8,7 @@ setup_port_hopping_nat() {
   ip6tables --table nat -A PREROUTING -p udp --dport ${PORT_HOPPING_START}:${PORT_HOPPING_END} -j DNAT --to-destination :${PORT}
   ok "端口跳跃范围: ${PORT_HOPPING_START}-${PORT_HOPPING_END} 已自动配置"
 }
-#!/usr/bin/env bash
-# echo -e "\033[33m\033[01m脚本维护中，请使用bash <(curl -Ls https://raw.githubusercontent.com/FranzKafkaYu/x-ui/master/install.sh)\033[0m"
-# exit 1
+
 
 set -euo pipefail
 
