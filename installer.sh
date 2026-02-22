@@ -27,6 +27,25 @@ TLS_SERVER_DEFAULT='addons.mozilla.org'
 DEFAULT_NEWEST_VERSION='1.13.0-rc.4'
 export DEBIAN_FRONTEND=noninteractive
 
+# Protocol order for port assignment
+PROTOCOL_ORDER=("vless_tcp_reality" "vmess_ws" "shadowsocks")
+
+# Get protocol index for port assignment
+get_protocol_index() {
+  local proto="$1"
+  for i in "${!PROTOCOL_ORDER[@]}"; do
+    [[ "${PROTOCOL_ORDER[$i]}" == "$proto" ]] && echo "$i" && return
+  done
+  echo 0
+}
+
+# Calculate port for protocol
+get_protocol_port() {
+  local proto="$1"
+  local idx=$(get_protocol_index "$proto")
+  echo $((START_PORT_DEFAULT + idx))
+}
+
 trap 'rm -rf "$TEMP_DIR" >/dev/null 2>&1 || true' EXIT
 mkdir -p "$TEMP_DIR" "$WORK_DIR" "$CONF_DIR" "$LOG_DIR"
 
@@ -310,7 +329,8 @@ install_vless_tcp_reality() {
   read_uuid
   read -rp "Reality 域名（sni/握手域名）[按回车默认: ${TLS_SERVER_DEFAULT}]： " TLS_DOMAIN
   TLS_DOMAIN="${TLS_DOMAIN:-$TLS_SERVER_DEFAULT}"
-  read_port "监听端口" "$DEFAULT_PORT_REALITY"
+  PORT=$(get_protocol_port "vless_tcp_reality")
+  ok "自动分配端口: $PORT"
   enable_bbr
   setup_port_hopping_nat
 
@@ -409,8 +429,9 @@ install_vmess_ws() {
 
   read_ip_default
   read_uuid
-  read_port "监听端口" "$DEFAULT_PORT_WS"
-  PORT=$(find_free_port "$PORT")  
+  PORT=$(get_protocol_port "vmess_ws")
+  PORT=$(find_free_port "$PORT")
+  ok "自动分配端口: $PORT"
   enable_bbr
   setup_port_hopping_nat
 
@@ -493,7 +514,8 @@ install_shadowsocks() {
   SS_PASS=$(openssl rand -base64 16)
   ok "已生成 Shadowsocks 密码: ${SS_PASS}"
 
-  read_port "监听端口" "$DEFAULT_PORT_SS"
+  PORT=$(get_protocol_port "shadowsocks")
+  ok "自动分配端口: $PORT"
   enable_bbr
   setup_port_hopping_nat
   local method="2022-blake3-aes-128-gcm"
