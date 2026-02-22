@@ -1,10 +1,16 @@
+# ---------- 自动端口跳跃 ----------
+PORT_HOPPING_START=$MIN_HOPPING_PORT
+PORT_HOPPING_END=$((PORT_HOPPING_START + 99)) # 默认100个端口
+
+setup_port_hopping_nat() {
+  # Forward UDP traffic from port range to actual service port
+  iptables --table nat -A PREROUTING -p udp --dport ${PORT_HOPPING_START}:${PORT_HOPPING_END} -j DNAT --to-destination :${PORT}
+  ip6tables --table nat -A PREROUTING -p udp --dport ${PORT_HOPPING_START}:${PORT_HOPPING_END} -j DNAT --to-destination :${PORT}
+  ok "端口跳跃范围: ${PORT_HOPPING_START}-${PORT_HOPPING_END} 已自动配置"
+}
 #!/usr/bin/env bash
 echo -e "\033[33m\033[01m脚本维护中，请使用bash <(curl -Ls https://raw.githubusercontent.com/FranzKafkaYu/x-ui/master/install.sh)\033[0m"
 exit 1
-# =====================================================
-# Proxy Installer
-# Version: 1.0
-# =====================================================
 
 set -euo pipefail
 
@@ -14,11 +20,13 @@ TEMP_DIR='/tmp/proxyinstaller'
 WORK_DIR='/etc/sing-box'
 LOG_DIR="${WORK_DIR}/logs"
 CONF_DIR="${WORK_DIR}/conf"
-DEFAULT_PORT_REALITY=443
-DEFAULT_PORT_WS=2080
-DEFAULT_PORT_SS=8388
-TLS_SERVER_DEFAULT='www.cloudflare.com'
-DEFAULT_NEWEST_VERSION='1.12.0'
+START_PORT_DEFAULT='8881'
+MIN_PORT=100
+MAX_PORT=65520
+MIN_HOPPING_PORT=10000
+MAX_HOPPING_PORT=65535
+TLS_SERVER_DEFAULT='addons.mozilla.org'
+DEFAULT_NEWEST_VERSION='1.13.0-rc.4'
 export DEBIAN_FRONTEND=noninteractive
 
 trap 'rm -rf "$TEMP_DIR" >/dev/null 2>&1 || true' EXIT
@@ -283,10 +291,11 @@ read_uuid() {
 
 read_port() {
   local hint="$1" def="$2"
-  read -rp "$hint [按回车默认: $def]： " PORT
-  PORT="${PORT:-$def}"
+  # Automatically select a random port within allowed range
+  PORT=$(( RANDOM % (MAX_PORT - MIN_PORT + 1) + MIN_PORT ))
+  ok "自动选择端口: $PORT"
   [[ "$PORT" =~ ^[0-9]+$ ]] || die "端口必须为数字。"
-  (( PORT>=100 && PORT<=65535 )) || die "端口必须在 100~65535。"
+  (( PORT>=MIN_PORT && PORT<=MAX_PORT )) || die "端口必须在 $MIN_PORT~$MAX_PORT。"
 }
 
 # ---------- 1) 安装 VLESS + TCP + Reality ----------
@@ -305,6 +314,7 @@ install_vless_tcp_reality() {
   TLS_DOMAIN="${TLS_DOMAIN:-$TLS_SERVER_DEFAULT}"
   read_port "监听端口" "$DEFAULT_PORT_REALITY"
   enable_bbr
+  setup_port_hopping_nat
 
   # 生成密钥对
   local kp priv pub
@@ -316,23 +326,42 @@ install_vless_tcp_reality() {
 
   cat > "${CONF_DIR}/10_vless_tcp_reality.json" <<EOF
 {
-  "inbounds": [{
-    "type": "vless",
-    "tag": "vless-reality",
-    "listen": "::",
-    "listen_port": ${PORT},
-    "users": [{ "uuid": "${UUID}" }],
-    "tls": {
-      "enabled": true,
-      "server_name": "${TLS_DOMAIN}",
-      "reality": {
+  "inbounds": [
+    {
+      "type": "vless",
+      "tag": "vless-reality",
+      "listen": "::",
+      "listen_port": ${PORT},
+      "users": [
+        {
+          "uuid": "${UUID}",
+          "flow": "xtls-rprx-vision"
+        }
+      ],
+      "tls": {
         "enabled": true,
-        "handshake": { "server": "${TLS_DOMAIN}", "server_port": 443 },
-        "private_key": "${priv}",
-        "short_id": [""]
+        "server_name": "${TLS_DOMAIN}",
+        "reality": {
+          "enabled": true,
+          "handshake": {
+            "server": "${TLS_DOMAIN}",
+            "server_port": 443
+          },
+          "private_key": "${priv}",
+          "short_id": [""]
+        }
+      },
+      "multiplex": {
+        "enabled": false,
+        "padding": false,
+        "brutal": {
+          "enabled": false,
+          "up_mbps": 1000,
+          "down_mbps": 1000
+        }
       }
     }
-  }]
+  ]
 }
 EOF
 
@@ -385,6 +414,7 @@ install_vmess_ws() {
   read_port "监听端口" "$DEFAULT_PORT_WS"
   PORT=$(find_free_port "$PORT")  
   enable_bbr
+  setup_port_hopping_nat
 
   local path="/${UUID}-vmess"
 
@@ -392,16 +422,32 @@ install_vmess_ws() {
 {
   "inbounds": [
     {
-       "type": "vmess",
+      "type": "vmess",
       "tag": "vmess-ws",
       "listen": "::",
       "listen_port": ${PORT},
+      "tcp_fast_open": false,
+      "proxy_protocol": false,
       "users": [
-        { "uuid": "${UUID}" }
+        {
+          "uuid": "${UUID}",
+          "alterId": 0
+        }
       ],
       "transport": {
         "type": "ws",
-        "path": "${path}"
+        "path": "${path}",
+        "max_early_data": 2560,
+        "early_data_header_name": "Sec-WebSocket-Protocol"
+      },
+      "multiplex": {
+        "enabled": true,
+        "padding": true,
+        "brutal": {
+          "enabled": false,
+          "up_mbps": 1000,
+          "down_mbps": 1000
+        }
       }
     }
   ]
@@ -446,23 +492,35 @@ install_shadowsocks() {
 
   ok "开始安装 Shadowsocks"
   read_ip_default
-   SS_PASS=$(cat /proc/sys/kernel/random/uuid)
+  SS_PASS=$(openssl rand -base64 16)
   ok "已生成 Shadowsocks 密码: ${SS_PASS}"
 
   read_port "监听端口" "$DEFAULT_PORT_SS"
   enable_bbr
-  local method="aes-128-gcm"
+  setup_port_hopping_nat
+  local method="2022-blake3-aes-128-gcm"
 
   cat > "${CONF_DIR}/12_ss.json" <<EOF
 {
-  "inbounds": [{
-    "type": "shadowsocks",
-    "tag": "shadowsocks",
-    "listen": "::",
-    "listen_port": ${PORT},
-    "method": "${method}",
-    "password": "${SS_PASS}"
-  }]
+  "inbounds": [
+    {
+      "type": "shadowsocks",
+      "tag": "shadowsocks",
+      "listen": "::",
+      "listen_port": ${PORT},
+      "method": "${method}",
+      "password": "${SS_PASS}",
+      "multiplex": {
+        "enabled": true,
+        "padding": true,
+        "brutal": {
+          "enabled": false,
+          "up_mbps": 1000,
+          "down_mbps": 1000
+        }
+      }
+    }
+  ]
 }
 EOF
   merge_config
