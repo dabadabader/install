@@ -1,50 +1,19 @@
-# ---------- 自动端口跳跃 ----------
-PORT_HOPPING_START=$MIN_HOPPING_PORT
-PORT_HOPPING_END=$((PORT_HOPPING_START + 99)) # 默认100个端口
-
-setup_port_hopping_nat() {
-  # Forward UDP traffic from port range to actual service port
-  iptables --table nat -A PREROUTING -p udp --dport ${PORT_HOPPING_START}:${PORT_HOPPING_END} -j DNAT --to-destination :${PORT}
-  ip6tables --table nat -A PREROUTING -p udp --dport ${PORT_HOPPING_START}:${PORT_HOPPING_END} -j DNAT --to-destination :${PORT}
-  ok "端口跳跃范围: ${PORT_HOPPING_START}-${PORT_HOPPING_END} 已自动配置"
-}
-
-
 set -euo pipefail
 
 VERSION='Proxy Installer v1.0'
-GH_PROXY='https://hub.glowp.xyz/'
+# Github 反代加速代理，第一个为空相当于直连
+GITHUB_PROXY=('' 'https://v6.gh-proxy.org/' 'https://gh-proxy.com/' 'https://hub.glowp.xyz/' 'https://proxy.vvvv.ee/' 'https://ghproxy.lvedong.eu.org/')
+GH_PROXY=''
 TEMP_DIR='/tmp/proxyinstaller'
 WORK_DIR='/etc/sing-box'
 LOG_DIR="${WORK_DIR}/logs"
 CONF_DIR="${WORK_DIR}/conf"
-START_PORT_DEFAULT='8881'
-MIN_PORT=100
-MAX_PORT=65520
-MIN_HOPPING_PORT=10000
-MAX_HOPPING_PORT=65535
+DEFAULT_PORT_REALITY=443
+DEFAULT_PORT_WS=2080
+DEFAULT_PORT_SS=8388
 TLS_SERVER_DEFAULT='addons.mozilla.org'
 DEFAULT_NEWEST_VERSION='1.13.0-rc.4'
 export DEBIAN_FRONTEND=noninteractive
-
-# Protocol order for port assignment
-PROTOCOL_ORDER=("vless_tcp_reality" "vmess_ws" "shadowsocks")
-
-# Get protocol index for port assignment
-get_protocol_index() {
-  local proto="$1"
-  for i in "${!PROTOCOL_ORDER[@]}"; do
-    [[ "${PROTOCOL_ORDER[$i]}" == "$proto" ]] && echo "$i" && return
-  done
-  echo 0
-}
-
-# Calculate port for protocol
-get_protocol_port() {
-  local proto="$1"
-  local idx=$(get_protocol_index "$proto")
-  echo $((START_PORT_DEFAULT + idx))
-}
 
 trap 'rm -rf "$TEMP_DIR" >/dev/null 2>&1 || true' EXIT
 mkdir -p "$TEMP_DIR" "$WORK_DIR" "$CONF_DIR" "$LOG_DIR"
@@ -97,13 +66,37 @@ install_deps() {
   done
 }
 
+# 检测是否需要启用 Github CDN，如能直接连通，则不使用
+check_cdn() {
+  for PROXY_URL in "${GITHUB_PROXY[@]}"; do
+    local PROXY_STATUS_CODE
+    PROXY_STATUS_CODE=$(wget --server-response --spider --quiet --timeout=3 --tries=1 ${PROXY_URL}https://api.github.com/repos/SagerNet/sing-box/releases 2>&1 | awk '/HTTP\//{last_field = $2} END {print last_field}')
+    [ "$PROXY_STATUS_CODE" = "200" ] && GH_PROXY="$PROXY_URL" && break
+  done
+}
+
 # ---------- Github 版本 ----------
 get_latest_version() {
-  # 尝试 API，失败则回退默认
-  local v
-  v=$(wget -qO- "${GH_PROXY:+$GH_PROXY}https://api.github.com/repos/SagerNet/sing-box/releases/latest" \
-      | grep -oE '"tag_name":\s*"v[0-9.]+"' | head -n1 | tr -dc '0-9.')
-  echo "${v:-$DEFAULT_NEWEST_VERSION}"
+  check_cdn
+  # FORCE_VERSION 用于在 sing-box 某个主程序出现 bug 时，强制为指定版本，以防止运行出错
+  local FORCE_VERSION
+  FORCE_VERSION=$(wget --no-check-certificate --tries=2 --timeout=3 -qO- ${GH_PROXY}https://raw.githubusercontent.com/fscarmen/sing-box/refs/heads/main/force_version | sed 's/^[vV]//g; s/\r//g')
+  if grep -q '.' <<< "$FORCE_VERSION"; then
+    local RESULT_VERSION="$FORCE_VERSION"
+  else
+    # 先判断 github api 返回 http 状态码是否为 200，有时候 IP 会被限制，导致获取不到最新版本
+    local API_RESPONSE
+    API_RESPONSE=$(wget --no-check-certificate --server-response --tries=2 --timeout=3 -qO- "${GH_PROXY}https://api.github.com/repos/SagerNet/sing-box/releases" 2>&1 | grep -E '^[ ]+HTTP/|tag_name')
+    if grep -q 'HTTP.* 200' <<< "$API_RESPONSE"; then
+      local VERSION_LATEST
+      VERSION_LATEST=$(awk -F '["v-]' '/tag_name/{print $5}' <<< "$API_RESPONSE" | sort -Vr | sed -n '1p')
+      local RESULT_VERSION
+      RESULT_VERSION=$(wget --no-check-certificate --tries=2 --timeout=3 -qO- ${GH_PROXY}https://api.github.com/repos/SagerNet/sing-box/releases | awk -F '["v]' -v var="tag_name.*$VERSION_LATEST" '$0 ~ var {print $5; exit}')
+    else
+      local RESULT_VERSION="$DEFAULT_NEWEST_VERSION"
+    fi
+  fi
+  echo "$RESULT_VERSION"
 }
 
 
@@ -115,6 +108,7 @@ ensure_singbox() {
     # ok "sing-box 已存在。"
     return
   fi
+  check_cdn
   local ver; ver=$(get_latest_version)
   ok "下载 sing-box v${ver} (${SB_ARCH}) ..."
   
@@ -308,11 +302,10 @@ read_uuid() {
 
 read_port() {
   local hint="$1" def="$2"
-  # Automatically select a random port within allowed range
-  PORT=$(( RANDOM % (MAX_PORT - MIN_PORT + 1) + MIN_PORT ))
-  ok "自动选择端口: $PORT"
+  read -rp "$hint [按回车默认: $def]： " PORT
+  PORT="${PORT:-$def}"
   [[ "$PORT" =~ ^[0-9]+$ ]] || die "端口必须为数字。"
-  (( PORT>=MIN_PORT && PORT<=MAX_PORT )) || die "端口必须在 $MIN_PORT~$MAX_PORT。"
+  (( PORT>=100 && PORT<=65535 )) || die "端口必须在 100~65535。"
 }
 
 # ---------- 1) 安装 VLESS + TCP + Reality ----------
@@ -329,12 +322,8 @@ install_vless_tcp_reality() {
   read_uuid
   read -rp "Reality 域名（sni/握手域名）[按回车默认: ${TLS_SERVER_DEFAULT}]： " TLS_DOMAIN
   TLS_DOMAIN="${TLS_DOMAIN:-$TLS_SERVER_DEFAULT}"
-  PORT=$(get_protocol_port "vless_tcp_reality")
-  ok "自动分配端口: $PORT"
+  read_port "监听端口" "$DEFAULT_PORT_REALITY"
   enable_bbr
-  PORT_HOPPING_START=$MIN_HOPPING_PORT
-  PORT_HOPPING_END=$((PORT_HOPPING_START + 99))
-  setup_port_hopping_nat
 
   # 生成密钥对
   local kp priv pub
@@ -346,42 +335,23 @@ install_vless_tcp_reality() {
 
   cat > "${CONF_DIR}/10_vless_tcp_reality.json" <<EOF
 {
-  "inbounds": [
-    {
-      "type": "vless",
-      "tag": "vless-reality",
-      "listen": "::",
-      "listen_port": ${PORT},
-      "users": [
-        {
-          "uuid": "${UUID}",
-          "flow": "xtls-rprx-vision"
-        }
-      ],
-      "tls": {
+  "inbounds": [{
+    "type": "vless",
+    "tag": "vless-reality",
+    "listen": "::",
+    "listen_port": ${PORT},
+    "users": [{ "uuid": "${UUID}" }],
+    "tls": {
+      "enabled": true,
+      "server_name": "${TLS_DOMAIN}",
+      "reality": {
         "enabled": true,
-        "server_name": "${TLS_DOMAIN}",
-        "reality": {
-          "enabled": true,
-          "handshake": {
-            "server": "${TLS_DOMAIN}",
-            "server_port": 443
-          },
-          "private_key": "${priv}",
-          "short_id": [""]
-        }
-      },
-      "multiplex": {
-        "enabled": false,
-        "padding": false,
-        "brutal": {
-          "enabled": false,
-          "up_mbps": 1000,
-          "down_mbps": 1000
-        }
+        "handshake": { "server": "${TLS_DOMAIN}", "server_port": 443 },
+        "private_key": "${priv}",
+        "short_id": [""]
       }
     }
-  ]
+  }]
 }
 EOF
 
@@ -431,13 +401,9 @@ install_vmess_ws() {
 
   read_ip_default
   read_uuid
-  PORT=$(get_protocol_port "vmess_ws")
-  PORT=$(find_free_port "$PORT")
-  ok "自动分配端口: $PORT"
+  read_port "监听端口" "$DEFAULT_PORT_WS"
+  PORT=$(find_free_port "$PORT")  
   enable_bbr
-  PORT_HOPPING_START=$MIN_HOPPING_PORT
-  PORT_HOPPING_END=$((PORT_HOPPING_START + 99))
-  setup_port_hopping_nat
 
   local path="/${UUID}-vmess"
 
@@ -445,32 +411,16 @@ install_vmess_ws() {
 {
   "inbounds": [
     {
-      "type": "vmess",
+       "type": "vmess",
       "tag": "vmess-ws",
       "listen": "::",
       "listen_port": ${PORT},
-      "tcp_fast_open": false,
-      "proxy_protocol": false,
       "users": [
-        {
-          "uuid": "${UUID}",
-          "alterId": 0
-        }
+        { "uuid": "${UUID}" }
       ],
       "transport": {
         "type": "ws",
-        "path": "${path}",
-        "max_early_data": 2560,
-        "early_data_header_name": "Sec-WebSocket-Protocol"
-      },
-      "multiplex": {
-        "enabled": true,
-        "padding": true,
-        "brutal": {
-          "enabled": false,
-          "up_mbps": 1000,
-          "down_mbps": 1000
-        }
+        "path": "${path}"
       }
     }
   ]
@@ -515,38 +465,23 @@ install_shadowsocks() {
 
   ok "开始安装 Shadowsocks"
   read_ip_default
-  SS_PASS=$(openssl rand -base64 16)
+   SS_PASS=$(cat /proc/sys/kernel/random/uuid)
   ok "已生成 Shadowsocks 密码: ${SS_PASS}"
 
-  PORT=$(get_protocol_port "shadowsocks")
-  ok "自动分配端口: $PORT"
+  read_port "监听端口" "$DEFAULT_PORT_SS"
   enable_bbr
-  PORT_HOPPING_START=$MIN_HOPPING_PORT
-  PORT_HOPPING_END=$((PORT_HOPPING_START + 99))
-  setup_port_hopping_nat
-  local method="2022-blake3-aes-128-gcm"
+  local method="aes-128-gcm"
 
   cat > "${CONF_DIR}/12_ss.json" <<EOF
 {
-  "inbounds": [
-    {
-      "type": "shadowsocks",
-      "tag": "shadowsocks",
-      "listen": "::",
-      "listen_port": ${PORT},
-      "method": "${method}",
-      "password": "${SS_PASS}",
-      "multiplex": {
-        "enabled": true,
-        "padding": true,
-        "brutal": {
-          "enabled": false,
-          "up_mbps": 1000,
-          "down_mbps": 1000
-        }
-      }
-    }
-  ]
+  "inbounds": [{
+    "type": "shadowsocks",
+    "tag": "shadowsocks",
+    "listen": "::",
+    "listen_port": ${PORT},
+    "method": "${method}",
+    "password": "${SS_PASS}"
+  }]
 }
 EOF
   merge_config
@@ -778,18 +713,18 @@ show_generated_links() {
 
 # ---------- 快捷命令 ----------
 install_shortcut() {
-  local cmd_path="/usr/local/bin/menu"
+  local cmd_path="/usr/local/bin/menu11"
 
   # Create shortcut script
   cat > "$cmd_path" <<'EOF'
 #!/usr/bin/env bash
-bash <(curl -Ls https://raw.githubusercontent.com/dabadabader/install/main/installer.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/dabadabader/install/testing/installer.sh)
 EOF
 
   chmod +x "$cmd_path"
 
   # Show message clearly to user
-  echo -e "\033[32m\033[01m❔重新打开安装菜单请输入：\033[0m\033[33mmenu\033[0m"
+  echo -e "\033[32m\033[01m❔重新打开测试安装菜单请输入：\033[0m\033[33mmenu11\033[0m"
 }
 
 
@@ -811,6 +746,10 @@ echo -e "==================================="
 echo -e "    ${GREEN}查询IP可以使用:${RESET}  ${LINK_PINGIP}"
 echo -e "==================================="
 echo
+ echo -e "\033[1m\033[31m*******************************\033[0m"
+  echo -e "\033[1m\033[31m          测试版            \033[0m"
+  echo -e "\033[1m\033[31m*******************************\033[0m"
+  echo
     echo "1) 安装 VLESS + TCP + Reality (直连选这里)"
   echo "2) 安装 VMESS + WS (软路由选这里)"
   echo "3) 安装 Shadowsocks (明文协议, IP容易被墙, 不建议使用)"
