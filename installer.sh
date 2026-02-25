@@ -1,15 +1,9 @@
-#!/usr/bin/env bash
-echo -e "\033[33m\033[01m脚本维护中，请使用bash <(curl -Ls https://raw.githubusercontent.com/FranzKafkaYu/x-ui/master/install.sh)\033[0m"
-exit 1
-# =====================================================
-# Proxy Installer
-# Version: 1.0
-# =====================================================
-
 set -euo pipefail
 
 VERSION='Proxy Installer v1.0'
-GH_PROXY='https://hub.glowp.xyz/'
+# Github 反代加速代理，第一个为空相当于直连
+GITHUB_PROXY=('' 'https://v6.gh-proxy.org/' 'https://gh-proxy.com/' 'https://hub.glowp.xyz/' 'https://proxy.vvvv.ee/' 'https://ghproxy.lvedong.eu.org/')
+GH_PROXY=''
 TEMP_DIR='/tmp/proxyinstaller'
 WORK_DIR='/etc/sing-box'
 LOG_DIR="${WORK_DIR}/logs"
@@ -17,8 +11,8 @@ CONF_DIR="${WORK_DIR}/conf"
 DEFAULT_PORT_REALITY=443
 DEFAULT_PORT_WS=2080
 DEFAULT_PORT_SS=8388
-TLS_SERVER_DEFAULT='www.cloudflare.com'
-DEFAULT_NEWEST_VERSION='1.12.0'
+TLS_SERVER_DEFAULT='addons.mozilla.org'
+DEFAULT_NEWEST_VERSION='1.13.0-rc.4'
 export DEBIAN_FRONTEND=noninteractive
 
 trap 'rm -rf "$TEMP_DIR" >/dev/null 2>&1 || true' EXIT
@@ -72,13 +66,37 @@ install_deps() {
   done
 }
 
+# 检测是否需要启用 Github CDN，如能直接连通，则不使用
+check_cdn() {
+  for PROXY_URL in "${GITHUB_PROXY[@]}"; do
+    local PROXY_STATUS_CODE
+    PROXY_STATUS_CODE=$(wget --server-response --spider --quiet --timeout=3 --tries=1 ${PROXY_URL}https://api.github.com/repos/SagerNet/sing-box/releases 2>&1 | awk '/HTTP\//{last_field = $2} END {print last_field}')
+    [ "$PROXY_STATUS_CODE" = "200" ] && GH_PROXY="$PROXY_URL" && break
+  done
+}
+
 # ---------- Github 版本 ----------
 get_latest_version() {
-  # 尝试 API，失败则回退默认
-  local v
-  v=$(wget -qO- "${GH_PROXY:+$GH_PROXY}https://api.github.com/repos/SagerNet/sing-box/releases/latest" \
-      | grep -oE '"tag_name":\s*"v[0-9.]+"' | head -n1 | tr -dc '0-9.')
-  echo "${v:-$DEFAULT_NEWEST_VERSION}"
+  check_cdn
+  # FORCE_VERSION 用于在 sing-box 某个主程序出现 bug 时，强制为指定版本，以防止运行出错
+  local FORCE_VERSION
+  FORCE_VERSION=$(wget --no-check-certificate --tries=2 --timeout=3 -qO- ${GH_PROXY}https://raw.githubusercontent.com/fscarmen/sing-box/refs/heads/main/force_version | sed 's/^[vV]//g; s/\r//g')
+  if grep -q '.' <<< "$FORCE_VERSION"; then
+    local RESULT_VERSION="$FORCE_VERSION"
+  else
+    # 先判断 github api 返回 http 状态码是否为 200，有时候 IP 会被限制，导致获取不到最新版本
+    local API_RESPONSE
+    API_RESPONSE=$(wget --no-check-certificate --server-response --tries=2 --timeout=3 -qO- "${GH_PROXY}https://api.github.com/repos/SagerNet/sing-box/releases" 2>&1 | grep -E '^[ ]+HTTP/|tag_name')
+    if grep -q 'HTTP.* 200' <<< "$API_RESPONSE"; then
+      local VERSION_LATEST
+      VERSION_LATEST=$(awk -F '["v-]' '/tag_name/{print $5}' <<< "$API_RESPONSE" | sort -Vr | sed -n '1p')
+      local RESULT_VERSION
+      RESULT_VERSION=$(wget --no-check-certificate --tries=2 --timeout=3 -qO- ${GH_PROXY}https://api.github.com/repos/SagerNet/sing-box/releases | awk -F '["v]' -v var="tag_name.*$VERSION_LATEST" '$0 ~ var {print $5; exit}')
+    else
+      local RESULT_VERSION="$DEFAULT_NEWEST_VERSION"
+    fi
+  fi
+  echo "$RESULT_VERSION"
 }
 
 
@@ -90,6 +108,7 @@ ensure_singbox() {
     # ok "sing-box 已存在。"
     return
   fi
+  check_cdn
   local ver; ver=$(get_latest_version)
   ok "下载 sing-box v${ver} (${SB_ARCH}) ..."
   
@@ -707,6 +726,7 @@ EOF
   # Show message clearly to user
   echo -e "\033[32m\033[01m❔重新打开安装菜单请输入：\033[0m\033[33mmenu\033[0m"
 }
+
 
 
 
