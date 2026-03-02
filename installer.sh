@@ -749,7 +749,7 @@ echo -e "==================================="
 echo
     echo "1) 安装 VLESS + TCP + Reality (直连选这里)"
   echo "2) 安装 VMESS + WS (软路由选这里)"
-  echo "3) 安装 Shadowsocks (明文协议, IP容易被墙, 不建议使用)"
+  echo "3) 安装 Shadowsocks (建议套中转使用，否则24小时就被防火墙屏蔽)"
   echo "4) 启用 BBR 加速 (已自动启用)"
   echo "5) 修改端口"
   echo "6) 修改用户名/密码"
