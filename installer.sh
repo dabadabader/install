@@ -8,9 +8,9 @@ TEMP_DIR='/tmp/proxyinstaller'
 WORK_DIR='/etc/sing-box'
 LOG_DIR="${WORK_DIR}/logs"
 CONF_DIR="${WORK_DIR}/conf"
-DEFAULT_PORT_REALITY=443
-DEFAULT_PORT_WS=2080
-DEFAULT_PORT_SS=8388
+DEFAULT_PORT_REALITY=$((RANDOM % 50001 + 10000))
+DEFAULT_PORT_WS=$((RANDOM % 50001 + 10000))
+DEFAULT_PORT_SS=$((RANDOM % 50001 + 10000))
 TLS_SERVER_DEFAULT='addons.mozilla.org'
 DEFAULT_NEWEST_VERSION='1.13.0-rc.4'
 export DEBIAN_FRONTEND=noninteractive
@@ -322,7 +322,9 @@ install_vless_tcp_reality() {
   read_uuid
   read -rp "Reality 域名（sni/握手域名）[按回车默认: ${TLS_SERVER_DEFAULT}]： " TLS_DOMAIN
   TLS_DOMAIN="${TLS_DOMAIN:-$TLS_SERVER_DEFAULT}"
+  DEFAULT_PORT_REALITY=$(find_free_port "$DEFAULT_PORT_REALITY")
   read_port "监听端口" "$DEFAULT_PORT_REALITY"
+  PORT=$(find_free_port "$PORT")
   enable_bbr
 
   # 生成密钥对
@@ -382,8 +384,10 @@ EOF
 # ---------- 2) 安装 VMESS + WS ----------
 find_free_port() {
   local port="$1"
+  # Check if port is in use using ss or netstat
   while ss -tuln | grep -q ":$port "; do
-    port=$((port+1))
+    port=$((port + 1))
+    if [ "$port" -gt 65535 ]; then port=10000; fi # Loop back if we exceed max port
   done
   echo "$port"
 }
@@ -401,8 +405,9 @@ install_vmess_ws() {
 
   read_ip_default
   read_uuid
+  DEFAULT_PORT_WS=$(find_free_port "$DEFAULT_PORT_WS")
   read_port "监听端口" "$DEFAULT_PORT_WS"
-  PORT=$(find_free_port "$PORT")  
+  PORT=$(find_free_port "$PORT")
   enable_bbr
 
   local path="/${UUID}-vmess"
@@ -468,7 +473,9 @@ install_shadowsocks() {
    SS_PASS=$(cat /proc/sys/kernel/random/uuid)
   ok "已生成 Shadowsocks 密码: ${SS_PASS}"
 
+   DEFAULT_PORT_SS=$(find_free_port "$DEFAULT_PORT_SS")
   read_port "监听端口" "$DEFAULT_PORT_SS"
+  PORT=$(find_free_port "$PORT")
   enable_bbr
   local method="aes-128-gcm"
 
@@ -522,7 +529,6 @@ enable_bbr() {
   echo
 }
 
-# （已取消交互）BBR 在安装步骤中自动启用
 
 # ---------- 6) 修改端口 ----------
 change_port() {
@@ -540,18 +546,21 @@ change_port() {
 
   [ -f "$file" ] || die "未检测到对应协议配置，请先安装该协议。"
 
-  read_port "新端口" "8081"
+  local SUGGESTED_PORT=$((RANDOM % 50001 + 10000))
+  SUGGESTED_PORT=$(find_free_port "$SUGGESTED_PORT")
+
+  read_port "新端口" "$SUGGESTED_PORT"
+  PORT=$(find_free_port "$PORT")
 
   jq --argjson p "$PORT" '(.. | objects | select(has("listen_port"))).listen_port = $p' \
-    "$file" > "${file}.tmp"
+    "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
 
-  mv "${file}.tmp" "$file"
   merge_config
   svc_restart
 
-  ok "端口已修改。"
+  ok "端口已修改为: $PORT"
   echo
-  echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+  echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
   echo
 }
 
