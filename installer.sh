@@ -8,9 +8,9 @@ TEMP_DIR='/tmp/proxyinstaller'
 WORK_DIR='/etc/sing-box'
 LOG_DIR="${WORK_DIR}/logs"
 CONF_DIR="${WORK_DIR}/conf"
-DEFAULT_PORT_REALITY=443
-DEFAULT_PORT_WS=2080
-DEFAULT_PORT_SS=8388
+DEFAULT_PORT_REALITY=$((RANDOM % 50001 + 10000))
+DEFAULT_PORT_WS=$((RANDOM % 50001 + 10000))
+DEFAULT_PORT_SS=$((RANDOM % 50001 + 10000))
 TLS_SERVER_DEFAULT='addons.mozilla.org'
 DEFAULT_NEWEST_VERSION='1.13.0-rc.4'
 export DEBIAN_FRONTEND=noninteractive
@@ -140,14 +140,43 @@ ensure_qrencode() {
   command -v qrencode >/dev/null 2>&1 && return
   ok "正在安装二维码生成工具..."
   if command -v apt >/dev/null 2>&1; then
-    apt update -y >/dev/null 2>&1
-    apt install -y qrencode >/dev/null 2>&1 || warn "qrencode 安装失败，跳过二维码功能。"
+    if ! apt update -y; then
+      warn "apt update 失败，跳过二维码功能。可手动执行：apt update && apt install -y qrencode"
+      return
+    fi
+    if ! apt install -y qrencode; then
+      warn "qrencode 安装失败，跳过二维码功能。可手动执行：apt install -y qrencode"
+      return
+    fi
   elif command -v yum >/dev/null 2>&1; then
-    yum install -y qrencode >/dev/null 2>&1 || warn "qrencode 安装失败，跳过二维码功能。"
+    if ! yum install -y qrencode; then
+      warn "qrencode 安装失败，跳过二维码功能。可手动执行：yum install -y qrencode"
+      return
+    fi
+  elif command -v dnf >/dev/null 2>&1; then
+    if ! dnf install -y qrencode; then
+      warn "qrencode 安装失败，跳过二维码功能。可手动执行：dnf install -y qrencode"
+      return
+    fi
   elif command -v apk >/dev/null 2>&1; then
-    apk add --no-cache qrencode >/dev/null 2>&1 || warn "qrencode 安装失败，跳过二维码功能。"
+    if ! apk add --no-cache qrencode; then
+      warn "qrencode 安装失败，跳过二维码功能。可手动执行：apk add --no-cache qrencode"
+      return
+    fi
+  elif command -v pacman >/dev/null 2>&1; then
+    if ! pacman -S --noconfirm qrencode; then
+      warn "qrencode 安装失败，跳过二维码功能。可手动执行：pacman -S --noconfirm qrencode"
+      return
+    fi
   else
-    warn "未识别的包管理器，请手动安装 qrencode。"
+    warn "未识别的包管理器，请手动安装 qrencode（例如：apt/yum/dnf/apk/pacman 安装命令）。"
+    return
+  fi
+
+  if command -v qrencode >/dev/null 2>&1; then
+    ok "二维码工具安装完成。"
+  else
+    warn "未检测到 qrencode，后续将跳过二维码显示。可手动安装后重试。"
   fi
 }
 
@@ -322,7 +351,9 @@ install_vless_tcp_reality() {
   read_uuid
   read -rp "Reality 域名（sni/握手域名）[按回车默认: ${TLS_SERVER_DEFAULT}]： " TLS_DOMAIN
   TLS_DOMAIN="${TLS_DOMAIN:-$TLS_SERVER_DEFAULT}"
+  DEFAULT_PORT_REALITY=$(find_free_port "$DEFAULT_PORT_REALITY")
   read_port "监听端口" "$DEFAULT_PORT_REALITY"
+  PORT=$(find_free_port "$PORT")
   enable_bbr
 
   # 生成密钥对
@@ -382,8 +413,10 @@ EOF
 # ---------- 2) 安装 VMESS + WS ----------
 find_free_port() {
   local port="$1"
+  # Check if port is in use using ss or netstat
   while ss -tuln | grep -q ":$port "; do
-    port=$((port+1))
+    port=$((port + 1))
+    if [ "$port" -gt 65535 ]; then port=10000; fi # Loop back if we exceed max port
   done
   echo "$port"
 }
@@ -401,8 +434,9 @@ install_vmess_ws() {
 
   read_ip_default
   read_uuid
+  DEFAULT_PORT_WS=$(find_free_port "$DEFAULT_PORT_WS")
   read_port "监听端口" "$DEFAULT_PORT_WS"
-  PORT=$(find_free_port "$PORT")  
+  PORT=$(find_free_port "$PORT")
   enable_bbr
 
   local path="/${UUID}-vmess"
@@ -468,7 +502,9 @@ install_shadowsocks() {
    SS_PASS=$(cat /proc/sys/kernel/random/uuid)
   ok "已生成 Shadowsocks 密码: ${SS_PASS}"
 
+   DEFAULT_PORT_SS=$(find_free_port "$DEFAULT_PORT_SS")
   read_port "监听端口" "$DEFAULT_PORT_SS"
+  PORT=$(find_free_port "$PORT")
   enable_bbr
   local method="aes-128-gcm"
 
@@ -522,7 +558,6 @@ enable_bbr() {
   echo
 }
 
-# （已取消交互）BBR 在安装步骤中自动启用
 
 # ---------- 6) 修改端口 ----------
 change_port() {
@@ -540,16 +575,19 @@ change_port() {
 
   [ -f "$file" ] || die "未检测到对应协议配置，请先安装该协议。"
 
-  read_port "新端口" "8081"
+  local SUGGESTED_PORT=$((RANDOM % 50001 + 10000))
+  SUGGESTED_PORT=$(find_free_port "$SUGGESTED_PORT")
+
+  read_port "新端口" "$SUGGESTED_PORT"
+  PORT=$(find_free_port "$PORT")
 
   jq --argjson p "$PORT" '(.. | objects | select(has("listen_port"))).listen_port = $p' \
-    "$file" > "${file}.tmp"
+    "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
 
-  mv "${file}.tmp" "$file"
   merge_config
   svc_restart
 
-  ok "端口已修改。"
+  ok "端口已修改为: $PORT"
   echo
   echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
   echo
@@ -729,7 +767,6 @@ EOF
 
 
 
-
 # ---------- 主菜单 ----------
 main_menu() {
   clear
@@ -746,10 +783,10 @@ LINK_PINGIP="${ESC}]8;;https://pingip.cn${ESC}\\${YELLOW}pingip.cn${RESET}${ESC}
 echo -e "==================================="
 echo -e "    ${GREEN}查询IP可以使用:${RESET}  ${LINK_PINGIP}"
 echo -e "==================================="
-echo
+  echo
     echo "1) 安装 VLESS + TCP + Reality (直连选这里)"
   echo "2) 安装 VMESS + WS (软路由选这里)"
-  echo "3) 安装 Shadowsocks (建议套中转使用，否则24小时就被防火墙屏蔽)"
+  echo "3) 安装 Shadowsocks (明文协议, IP容易被墙, 不建议使用)"
   echo "4) 启用 BBR 加速 (已自动启用)"
   echo "5) 修改端口"
   echo "6) 修改用户名/密码"
@@ -779,6 +816,7 @@ need_root
 detect_arch
 detect_os
 install_deps
+# ensure_qrencode
 install_shortcut
 auto_cleanup_old_configs
 merge_config
