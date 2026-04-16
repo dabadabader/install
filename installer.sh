@@ -158,54 +158,35 @@ ensure_singbox() {
   rm -f "$tarball"
 }
 
+
 ensure_qrencode() {
-  command -v qrencode >/dev/null 2>&1 && return
+  command -v qrencode >/dev/null 2>&1 && return 0
+
   ok "正在安装二维码生成工具..."
+  local qr_log="/tmp/qrencode-install.log"
+  : > "$qr_log"
+
   if command -v apt >/dev/null 2>&1; then
-    if ! apt update -y; then
-      warn "apt update 失败，尝试自动同步系统时间后重试..."
-      sync_system_time
-      if ! apt update -y; then
-        warn "apt update 失败，跳过二维码功能。可手动执行：timedatectl set-ntp true && apt update && apt install -y qrencode"
-        return
+    if ! DEBIAN_FRONTEND=noninteractive apt install -y qrencode >>"$qr_log" 2>&1; then
+      warn "直接安装失败，尝试更新软件后重试..."
+      if ! apt update >>"$qr_log" 2>&1; then
+        warn "apt update 失败，尝试同步系统时间..."
+        sync_system_time
+        if ! apt update >>"$qr_log" 2>&1; then
+          warn "apt update 失败，跳过二维码功能。"
+          return 1
+        fi
+      fi
+
+      if ! DEBIAN_FRONTEND=noninteractive apt install -y qrencode >>"$qr_log" 2>&1; then
+        warn "qrencode 安装失败，跳过二维码功能。"
+        return 1
       fi
     fi
-    if ! apt install -y qrencode; then
-      warn "qrencode 安装失败，跳过二维码功能。可手动执行：apt install -y qrencode"
-      return
-    fi
-  elif command -v yum >/dev/null 2>&1; then
-    if ! yum install -y qrencode; then
-      warn "qrencode 安装失败，跳过二维码功能。可手动执行：yum install -y qrencode"
-      return
-    fi
-  elif command -v dnf >/dev/null 2>&1; then
-    if ! dnf install -y qrencode; then
-      warn "qrencode 安装失败，跳过二维码功能。可手动执行：dnf install -y qrencode"
-      return
-    fi
-  elif command -v apk >/dev/null 2>&1; then
-    if ! apk add --no-cache qrencode; then
-      warn "qrencode 安装失败，跳过二维码功能。可手动执行：apk add --no-cache qrencode"
-      return
-    fi
-  elif command -v pacman >/dev/null 2>&1; then
-    if ! pacman -S --noconfirm qrencode; then
-      warn "qrencode 安装失败，跳过二维码功能。可手动执行：pacman -S --noconfirm qrencode"
-      return
-    fi
-  else
-    warn "未识别的包管理器，请手动安装 qrencode（例如：apt/yum/dnf/apk/pacman 安装命令）。"
-    return
   fi
 
-  if command -v qrencode >/dev/null 2>&1; then
-    ok "二维码工具安装完成。"
-  else
-    warn "未检测到 qrencode，后续将跳过二维码显示。可手动安装后重试。"
-  fi
+  ok "二维码工具安装完成。"
 }
-
 
 
 # ---------- systemd ----------
@@ -845,9 +826,7 @@ echo
 need_root
 detect_arch
 detect_os
-sync_system_time
 install_deps
-# ensure_qrencode
 install_shortcut
 auto_cleanup_old_configs
 merge_config
