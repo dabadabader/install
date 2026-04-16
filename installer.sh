@@ -66,6 +66,28 @@ install_deps() {
   done
 }
 
+sync_system_time() {
+  ok "正在尝试同步系统时间..."
+
+  if command -v timedatectl >/dev/null 2>&1; then
+    timedatectl set-ntp true >/dev/null 2>&1 || true
+  fi
+
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl restart systemd-timesyncd >/dev/null 2>&1 || true
+    systemctl restart chronyd >/dev/null 2>&1 || true
+    systemctl restart chrony >/dev/null 2>&1 || true
+  fi
+
+  if command -v chronyc >/dev/null 2>&1; then
+    chronyc -a makestep >/dev/null 2>&1 || true
+  elif command -v ntpdate >/dev/null 2>&1; then
+    ntpdate -u time.google.com >/dev/null 2>&1 || true
+  fi
+
+  sleep 1
+}
+
 # 检测是否需要启用 Github CDN，如能直接连通，则不使用
 check_cdn() {
   for PROXY_URL in "${GITHUB_PROXY[@]}"; do
@@ -141,8 +163,12 @@ ensure_qrencode() {
   ok "正在安装二维码生成工具..."
   if command -v apt >/dev/null 2>&1; then
     if ! apt update -y; then
-      warn "apt update 失败，跳过二维码功能。可手动执行：apt update && apt install -y qrencode"
-      return
+      warn "apt update 失败，尝试自动同步系统时间后重试..."
+      sync_system_time
+      if ! apt update -y; then
+        warn "apt update 失败，跳过二维码功能。可手动执行：timedatectl set-ntp true && apt update && apt install -y qrencode"
+        return
+      fi
     fi
     if ! apt install -y qrencode; then
       warn "qrencode 安装失败，跳过二维码功能。可手动执行：apt install -y qrencode"
@@ -401,7 +427,7 @@ EOF
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
     echo
-     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
   echo
   else
     warn "未检测到 qrencode，无法生成二维码。"
@@ -481,7 +507,7 @@ EOF
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
     echo
-     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
   echo
   else
     warn "未检测到 qrencode，无法生成二维码。"
@@ -537,7 +563,7 @@ EOF
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
     echo
-     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
     echo
   else
     warn "未检测到 qrencode，无法生成二维码。"
@@ -554,7 +580,7 @@ enable_bbr() {
   sysctl net.ipv4.tcp_congestion_control
   ok "BBR 处理完成。"
   echo
-   echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+   echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
   echo
 }
 
@@ -613,7 +639,7 @@ change_user_cred() {
       svc_restart
       ok "VLESS UUID 已修改。"
       echo
-       echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+       echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
       echo
       ;;
     2)
@@ -626,7 +652,7 @@ change_user_cred() {
       svc_restart
       ok "Shadowsocks 密码已修改。"
       echo
-      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
       echo
       ;;
     *) die "无效选择" ;;
@@ -681,7 +707,7 @@ show_generated_links() {
     if command -v qrencode >/dev/null 2>&1; then
       qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
       echo
-      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
       echo
     else
       warn "未检测到 qrencode，无法生成二维码。"
@@ -711,7 +737,7 @@ show_generated_links() {
     if command -v qrencode >/dev/null 2>&1; then
       qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
       echo
-      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
       echo
     else
       warn "未检测到 qrencode，无法生成二维码。"
@@ -736,7 +762,7 @@ show_generated_links() {
     if command -v qrencode >/dev/null 2>&1; then
       qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
       echo
-      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
       echo  
     else
       warn "未检测到 qrencode，无法生成二维码。"
@@ -819,6 +845,7 @@ echo
 need_root
 detect_arch
 detect_os
+sync_system_time
 install_deps
 # ensure_qrencode
 install_shortcut
