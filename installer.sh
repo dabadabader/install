@@ -169,11 +169,12 @@ ensure_qrencode() {
   if command -v apt >/dev/null 2>&1; then
     if ! DEBIAN_FRONTEND=noninteractive apt install -y qrencode >>"$qr_log" 2>&1; then
       warn "直接安装失败，尝试更新软件后重试..."
-      if ! apt update >>"$qr_log" 2>&1; then
+      if ! apt update 2>&1 | tee -a "$qr_log" | grep -E "^(Hit:|Get:|Err:|Fetched|Reading package)"; then
         warn "apt update 失败，尝试同步系统时间..."
         sync_system_time
-        if ! apt update >>"$qr_log" 2>&1; then
-          warn "apt update 失败，跳过二维码功能。"
+
+        if ! apt update 2>&1 | tee -a "$qr_log" | grep -E "^(Hit:|Get:|Err:|Fetched|Reading package)"; then
+          warn "apt update 仍然失败，跳过二维码功能。"
           return 1
         fi
       fi
