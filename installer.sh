@@ -140,46 +140,16 @@ ensure_qrencode() {
   command -v qrencode >/dev/null 2>&1 && return
   ok "正在安装二维码生成工具..."
   if command -v apt >/dev/null 2>&1; then
-    if ! apt update -y; then
-      warn "apt update 失败，跳过二维码功能。可手动执行：apt update && apt install -y qrencode"
-      return
-    fi
-    if ! apt install -y qrencode; then
-      warn "qrencode 安装失败，跳过二维码功能。可手动执行：apt install -y qrencode"
-      return
-    fi
+    apt update -y >/dev/null 2>&1
+    apt install -y qrencode >/dev/null 2>&1 || warn "qrencode 安装失败，跳过二维码功能。"
   elif command -v yum >/dev/null 2>&1; then
-    if ! yum install -y qrencode; then
-      warn "qrencode 安装失败，跳过二维码功能。可手动执行：yum install -y qrencode"
-      return
-    fi
-  elif command -v dnf >/dev/null 2>&1; then
-    if ! dnf install -y qrencode; then
-      warn "qrencode 安装失败，跳过二维码功能。可手动执行：dnf install -y qrencode"
-      return
-    fi
+    yum install -y qrencode >/dev/null 2>&1 || warn "qrencode 安装失败，跳过二维码功能。"
   elif command -v apk >/dev/null 2>&1; then
-    if ! apk add --no-cache qrencode; then
-      warn "qrencode 安装失败，跳过二维码功能。可手动执行：apk add --no-cache qrencode"
-      return
-    fi
-  elif command -v pacman >/dev/null 2>&1; then
-    if ! pacman -S --noconfirm qrencode; then
-      warn "qrencode 安装失败，跳过二维码功能。可手动执行：pacman -S --noconfirm qrencode"
-      return
-    fi
+    apk add --no-cache qrencode >/dev/null 2>&1 || warn "qrencode 安装失败，跳过二维码功能。"
   else
-    warn "未识别的包管理器，请手动安装 qrencode（例如：apt/yum/dnf/apk/pacman 安装命令）。"
-    return
-  fi
-
-  if command -v qrencode >/dev/null 2>&1; then
-    ok "二维码工具安装完成。"
-  else
-    warn "未检测到 qrencode，后续将跳过二维码显示。可手动安装后重试。"
+    warn "未识别的包管理器，请手动安装 qrencode。"
   fi
 }
-
 
 
 # ---------- systemd ----------
