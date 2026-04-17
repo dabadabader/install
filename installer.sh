@@ -66,6 +66,28 @@ install_deps() {
   done
 }
 
+sync_system_time() {
+  ok "正在尝试同步系统时间..."
+
+  if command -v timedatectl >/dev/null 2>&1; then
+    timedatectl set-ntp true >/dev/null 2>&1 || true
+  fi
+
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl restart systemd-timesyncd >/dev/null 2>&1 || true
+    systemctl restart chronyd >/dev/null 2>&1 || true
+    systemctl restart chrony >/dev/null 2>&1 || true
+  fi
+
+  if command -v chronyc >/dev/null 2>&1; then
+    chronyc -a makestep >/dev/null 2>&1 || true
+  elif command -v ntpdate >/dev/null 2>&1; then
+    ntpdate -u time.google.com >/dev/null 2>&1 || true
+  fi
+
+  sleep 1
+}
+
 # 检测是否需要启用 Github CDN，如能直接连通，则不使用
 check_cdn() {
   for PROXY_URL in "${GITHUB_PROXY[@]}"; do
@@ -136,19 +158,35 @@ ensure_singbox() {
   rm -f "$tarball"
 }
 
+
 ensure_qrencode() {
-  command -v qrencode >/dev/null 2>&1 && return
+  command -v qrencode >/dev/null 2>&1 && return 0
+
   ok "正在安装二维码生成工具..."
+  local qr_log="/tmp/qrencode-install.log"
+  : > "$qr_log"
+
   if command -v apt >/dev/null 2>&1; then
-    apt update -y >/dev/null 2>&1
-    apt install -y qrencode >/dev/null 2>&1 || warn "qrencode 安装失败，跳过二维码功能。"
-  elif command -v yum >/dev/null 2>&1; then
-    yum install -y qrencode >/dev/null 2>&1 || warn "qrencode 安装失败，跳过二维码功能。"
-  elif command -v apk >/dev/null 2>&1; then
-    apk add --no-cache qrencode >/dev/null 2>&1 || warn "qrencode 安装失败，跳过二维码功能。"
-  else
-    warn "未识别的包管理器，请手动安装 qrencode。"
+    if ! DEBIAN_FRONTEND=noninteractive apt install -y qrencode >>"$qr_log" 2>&1; then
+      warn "直接安装失败，尝试更新软件后重试..."
+      if ! apt update 2>&1 | tee -a "$qr_log" | grep -E "^(Hit:|Get:|Err:|Fetched|Reading package)"; then
+        warn "apt update 失败，尝试同步系统时间..."
+        sync_system_time
+
+        if ! apt update 2>&1 | tee -a "$qr_log" | grep -E "^(Hit:|Get:|Err:|Fetched|Reading package)"; then
+          warn "apt update 仍然失败，跳过二维码功能。"
+          return 1
+        fi
+      fi
+
+      if ! DEBIAN_FRONTEND=noninteractive apt install -y qrencode >>"$qr_log" 2>&1; then
+        warn "qrencode 安装失败，跳过二维码功能。"
+        return 1
+      fi
+    fi
   fi
+
+  ok "二维码工具安装完成。"
 }
 
 
@@ -736,7 +774,6 @@ EOF
 }
 
 
-
 # ---------- 主菜单 ----------
 main_menu() {
   clear
@@ -786,7 +823,6 @@ need_root
 detect_arch
 detect_os
 install_deps
-# ensure_qrencode
 install_shortcut
 auto_cleanup_old_configs
 merge_config
