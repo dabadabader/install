@@ -57,6 +57,12 @@ detect_os() {
 }
 
 install_deps() {
+  # Upgrade http to https for Debian/Ubuntu systems before package operations
+  if command -v apt >/dev/null 2>&1; then
+    sed -i 's|http://|https://|g' /etc/apt/sources.list 2>/dev/null || true
+    [ -d /etc/apt/sources.list.d ] && find /etc/apt/sources.list.d -name "*.list" -exec sed -i 's|http://|https://|g' {} \; 2>/dev/null || true
+  fi
+  
   local deps=(wget curl jq tar openssl)
   for d in "${deps[@]}"; do
     if ! command -v "$d" >/dev/null 2>&1; then
@@ -64,6 +70,28 @@ install_deps() {
       $PKG_INSTALL "$d" || die "安装 $d 失败"
     fi
   done
+}
+
+sync_system_time() {
+  ok "正在尝试同步系统时间..."
+
+  if command -v timedatectl >/dev/null 2>&1; then
+    timedatectl set-ntp true >/dev/null 2>&1 || true
+  fi
+
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl restart systemd-timesyncd >/dev/null 2>&1 || true
+    systemctl restart chronyd >/dev/null 2>&1 || true
+    systemctl restart chrony >/dev/null 2>&1 || true
+  fi
+
+  if command -v chronyc >/dev/null 2>&1; then
+    chronyc -a makestep >/dev/null 2>&1 || true
+  elif command -v ntpdate >/dev/null 2>&1; then
+    ntpdate -u time.google.com >/dev/null 2>&1 || true
+  fi
+
+  sleep 1
 }
 
 # 检测是否需要启用 Github CDN，如能直接连通，则不使用
@@ -136,21 +164,36 @@ ensure_singbox() {
   rm -f "$tarball"
 }
 
-ensure_qrencode() {
-  command -v qrencode >/dev/null 2>&1 && return
-  ok "正在安装二维码生成工具..."
-  if command -v apt >/dev/null 2>&1; then
-    apt update -y >/dev/null 2>&1
-    apt install -y qrencode >/dev/null 2>&1 || warn "qrencode 安装失败，跳过二维码功能。"
-  elif command -v yum >/dev/null 2>&1; then
-    yum install -y qrencode >/dev/null 2>&1 || warn "qrencode 安装失败，跳过二维码功能。"
-  elif command -v apk >/dev/null 2>&1; then
-    apk add --no-cache qrencode >/dev/null 2>&1 || warn "qrencode 安装失败，跳过二维码功能。"
-  else
-    warn "未识别的包管理器，请手动安装 qrencode。"
-  fi
-}
 
+ensure_qrencode() {
+  command -v qrencode >/dev/null 2>&1 && return 0
+
+  ok "正在安装二维码生成工具..."
+  local qr_log="/tmp/qrencode-install.log"
+  : > "$qr_log"
+
+  if command -v apt >/dev/null 2>&1; then
+    if ! DEBIAN_FRONTEND=noninteractive apt install -y qrencode >>"$qr_log" 2>&1; then
+      warn "直接安装失败，尝试更新软件后重试..."
+      if ! apt update 2>&1 | tee -a "$qr_log" | grep -E "^(Hit:|Get:|Err:|Fetched|Reading package)"; then
+        warn "apt update 失败，尝试同步系统时间..."
+        sync_system_time
+
+        if ! apt update 2>&1 | tee -a "$qr_log" | grep -E "^(Hit:|Get:|Err:|Fetched|Reading package)"; then
+          warn "apt update 仍然失败，跳过二维码功能。"
+          return 1
+        fi
+      fi
+
+      if ! DEBIAN_FRONTEND=noninteractive apt install -y qrencode >>"$qr_log" 2>&1; then
+        warn "qrencode 安装失败，跳过二维码功能。"
+        return 1
+      fi
+    fi
+  fi
+
+  ok "二维码工具安装完成。"
+}
 
 
 # ---------- systemd ----------
@@ -372,7 +415,7 @@ EOF
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
     echo
-     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
   echo
   else
     warn "未检测到 qrencode，无法生成二维码。"
@@ -452,7 +495,7 @@ EOF
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
     echo
-     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
   echo
   else
     warn "未检测到 qrencode，无法生成二维码。"
@@ -508,7 +551,7 @@ EOF
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
     echo
-     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
     echo
   else
     warn "未检测到 qrencode，无法生成二维码。"
@@ -525,7 +568,7 @@ enable_bbr() {
   sysctl net.ipv4.tcp_congestion_control
   ok "BBR 处理完成。"
   echo
-   echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+   echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
   echo
 }
 
@@ -584,7 +627,7 @@ change_user_cred() {
       svc_restart
       ok "VLESS UUID 已修改。"
       echo
-       echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+       echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
       echo
       ;;
     2)
@@ -597,7 +640,7 @@ change_user_cred() {
       svc_restart
       ok "Shadowsocks 密码已修改。"
       echo
-      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
       echo
       ;;
     *) die "无效选择" ;;
@@ -652,7 +695,7 @@ show_generated_links() {
     if command -v qrencode >/dev/null 2>&1; then
       qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
       echo
-      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
       echo
     else
       warn "未检测到 qrencode，无法生成二维码。"
@@ -682,7 +725,7 @@ show_generated_links() {
     if command -v qrencode >/dev/null 2>&1; then
       qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
       echo
-      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
       echo
     else
       warn "未检测到 qrencode，无法生成二维码。"
@@ -707,7 +750,7 @@ show_generated_links() {
     if command -v qrencode >/dev/null 2>&1; then
       qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
       echo
-      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
       echo  
     else
       warn "未检测到 qrencode，无法生成二维码。"
