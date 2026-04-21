@@ -57,6 +57,12 @@ detect_os() {
 }
 
 install_deps() {
+  # Upgrade http to https for Debian/Ubuntu systems before package operations
+  if command -v apt >/dev/null 2>&1; then
+    sed -i 's|http://|https://|g' /etc/apt/sources.list 2>/dev/null || true
+    [ -d /etc/apt/sources.list.d ] && find /etc/apt/sources.list.d -name "*.list" -exec sed -i 's|http://|https://|g' {} \; 2>/dev/null || true
+  fi
+  
   local deps=(wget curl jq tar openssl)
   for d in "${deps[@]}"; do
     if ! command -v "$d" >/dev/null 2>&1; then
@@ -188,6 +194,8 @@ ensure_qrencode() {
 
   ok "二维码工具安装完成。"
 }
+
+
 
 
 # ---------- systemd ----------
