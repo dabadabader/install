@@ -844,9 +844,6 @@ echo
   esac
 
 
-}
-
-
 # ---------- 引导 ----------
 need_root
 detect_arch
