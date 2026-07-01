@@ -31,6 +31,16 @@ RED="${ESC}[31m"
 RESET="${ESC}[0m"
 die()    { err "$*"; exit 1; }
 
+prompt_read() {
+  local prompt="$1" var="$2"
+
+  if [ -r /dev/tty ]; then
+    IFS= read -r -p "$prompt" "$var" </dev/tty || return 1
+  else
+    IFS= read -r -p "$prompt" "$var" || return 1
+  fi
+}
+
 # ---------- 基础检测 ----------
 need_root() { [ "$(id -u)" -eq 0 ] || die "请使用 root 运行。"; }
 
@@ -98,7 +108,7 @@ sync_system_time() {
 check_cdn() {
   for PROXY_URL in "${GITHUB_PROXY[@]}"; do
     local PROXY_STATUS_CODE
-    PROXY_STATUS_CODE=$(wget --server-response --spider --quiet --timeout=3 --tries=1 ${PROXY_URL}https://api.github.com/repos/SagerNet/sing-box/releases 2>&1 | awk '/HTTP\//{last_field = $2} END {print last_field}')
+    PROXY_STATUS_CODE=$(wget --server-response --spider --quiet --timeout=3 --tries=1 ${PROXY_URL}https://api.github.com/repos/SagerNet/sing-box/releases 2>&1 | awk '/HTTP\//{last_field = $2} END {print last_field}' || true)
     [ "$PROXY_STATUS_CODE" = "200" ] && GH_PROXY="$PROXY_URL" && break
   done
 }
@@ -108,18 +118,19 @@ get_latest_version() {
   check_cdn
   # FORCE_VERSION 用于在 sing-box 某个主程序出现 bug 时，强制为指定版本，以防止运行出错
   local FORCE_VERSION
-  FORCE_VERSION=$(wget --no-check-certificate --tries=2 --timeout=3 -qO- ${GH_PROXY}https://raw.githubusercontent.com/fscarmen/sing-box/refs/heads/main/force_version | sed 's/^[vV]//g; s/\r//g')
+  FORCE_VERSION=$(wget --no-check-certificate --tries=2 --timeout=3 -qO- ${GH_PROXY}https://raw.githubusercontent.com/fscarmen/sing-box/refs/heads/main/force_version 2>/dev/null | sed 's/^[vV]//g; s/\r//g' || true)
   if grep -q '.' <<< "$FORCE_VERSION"; then
     local RESULT_VERSION="$FORCE_VERSION"
   else
     # 先判断 github api 返回 http 状态码是否为 200，有时候 IP 会被限制，导致获取不到最新版本
     local API_RESPONSE
-    API_RESPONSE=$(wget --no-check-certificate --server-response --tries=2 --timeout=3 -qO- "${GH_PROXY}https://api.github.com/repos/SagerNet/sing-box/releases" 2>&1 | grep -E '^[ ]+HTTP/|tag_name')
+    API_RESPONSE=$(wget --no-check-certificate --server-response --tries=2 --timeout=3 -qO- "${GH_PROXY}https://api.github.com/repos/SagerNet/sing-box/releases" 2>&1 | grep -E '^[ ]+HTTP/|tag_name' || true)
     if grep -q 'HTTP.* 200' <<< "$API_RESPONSE"; then
       local VERSION_LATEST
       VERSION_LATEST=$(awk -F '["v-]' '/tag_name/{print $5}' <<< "$API_RESPONSE" | sort -Vr | sed -n '1p')
       local RESULT_VERSION
-      RESULT_VERSION=$(wget --no-check-certificate --tries=2 --timeout=3 -qO- ${GH_PROXY}https://api.github.com/repos/SagerNet/sing-box/releases | awk -F '["v]' -v var="tag_name.*$VERSION_LATEST" '$0 ~ var {print $5; exit}')
+      RESULT_VERSION=$(wget --no-check-certificate --tries=2 --timeout=3 -qO- ${GH_PROXY}https://api.github.com/repos/SagerNet/sing-box/releases 2>/dev/null | awk -F '["v]' -v var="tag_name.*$VERSION_LATEST" '$0 ~ var {print $5; exit}' || true)
+      RESULT_VERSION="${RESULT_VERSION:-$DEFAULT_NEWEST_VERSION}"
     else
       local RESULT_VERSION="$DEFAULT_NEWEST_VERSION"
     fi
@@ -346,7 +357,7 @@ read_uuid() {
 
 read_port() {
   local hint="$1" def="$2"
-  read -rp "$hint [按回车默认: $def]： " PORT
+  prompt_read "$hint [按回车默认: $def]： " PORT || die "读取输入失败，请在交互式终端中运行脚本。"
   PORT="${PORT:-$def}"
   [[ "$PORT" =~ ^[0-9]+$ ]] || die "端口必须为数字。"
   (( PORT>=100 && PORT<=65535 )) || die "端口必须在 100~65535。"
@@ -364,7 +375,7 @@ install_vless_tcp_reality() {
   ok "开始安装 VLESS + TCP + Reality 协议"
   read_ip_default
   read_uuid
-  read -rp "Reality 域名（sni/握手域名）[按回车默认: ${TLS_SERVER_DEFAULT}]： " TLS_DOMAIN
+  prompt_read "Reality 域名（sni/握手域名）[按回车默认: ${TLS_SERVER_DEFAULT}]： " TLS_DOMAIN || die "读取输入失败，请在交互式终端中运行脚本。"
   TLS_DOMAIN="${TLS_DOMAIN:-$TLS_SERVER_DEFAULT}"
   DEFAULT_PORT_REALITY=$(find_free_port "$DEFAULT_PORT_REALITY")
   read_port "监听端口" "$DEFAULT_PORT_REALITY"
@@ -407,7 +418,7 @@ EOF
   ok "✅ VLESS + TCP + Reality 安装完成"
 
 
-  ensure_qrencode
+  ensure_qrencode || true
   link="vless://${UUID}@${SERVER_IP}:${PORT}?encryption=none&security=reality&sni=${TLS_DOMAIN}&fp=chrome&pbk=${pub}&type=tcp#VLESS-REALITY"
   clean_link=$(echo -n "$link" | tr -d '\r\n')
   echo "导入链接："
@@ -416,7 +427,7 @@ EOF
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
     echo
-     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
+     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
   echo
   else
     warn "未检测到 qrencode，无法生成二维码。"
@@ -481,7 +492,7 @@ EOF
 
   ok "✅ VMESS + WS 已安装完成"
 
-  ensure_qrencode
+  ensure_qrencode || true
   json=$(printf '{"v":"2","ps":"VMESS-WS","add":"%s","port":"%s","id":"%s","aid":"0","net":"ws","type":"none","host":"","path":"%s","tls":""}' \
         "$SERVER_IP" "$PORT" "$UUID" "$path")
   b64=$(echo -n "$json" | base64 -w0)
@@ -496,7 +507,7 @@ EOF
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
     echo
-     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
+     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
   echo
   else
     warn "未检测到 qrencode，无法生成二维码。"
@@ -539,7 +550,7 @@ EOF
   svc_restart
   ok "✅ Shadowsocks 已安装完成"
 
-  ensure_qrencode
+  ensure_qrencode || true
   local b64
   b64="$(printf '%s' "${method}:${SS_PASS}@${SERVER_IP}:${PORT}" | base64 | tr -d '\n')"
   link="ss://${b64}#Shadowsocks"
@@ -552,7 +563,7 @@ EOF
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
     echo
-     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
+     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
     echo
   else
     warn "未检测到 qrencode，无法生成二维码。"
@@ -569,7 +580,7 @@ enable_bbr() {
   sysctl net.ipv4.tcp_congestion_control
   ok "BBR 处理完成。"
   echo
-   echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
+   echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
   echo
 }
 
@@ -580,7 +591,8 @@ change_port() {
   echo "1) VLESS Reality"
   echo "2) VMESS WS"
   echo "3) Shadowsocks"
-  read -rp "输入 1/2/3：" which
+  prompt_read "输入 1/2/3：" which || die "读取输入失败，请在交互式终端中运行脚本。"
+  which="${which//[[:space:]]/}"
   case "$which" in
     1) file="${CONF_DIR}/10_vless_tcp_reality.json" ;;
     2) file="${CONF_DIR}/13_vmess_ws.json" ;;
@@ -604,7 +616,7 @@ change_port() {
 
   ok "端口已修改为: $PORT"
   echo
-  echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
+  echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
   echo
 }
 
@@ -614,7 +626,8 @@ change_user_cred() {
   echo "选择要修改凭据的协议："
   echo "1) VLESS（Reality + WS 会同时修改 UUID）"
   echo "2) Shadowsocks 密码"
-  read -rp "输入 1/2：" which
+  prompt_read "输入 1/2：" which || die "读取输入失败，请在交互式终端中运行脚本。"
+  which="${which//[[:space:]]/}"
   case "$which" in
     1)
       local f1="${CONF_DIR}/10_vless_tcp_reality.json"
@@ -628,20 +641,20 @@ change_user_cred() {
       svc_restart
       ok "VLESS UUID 已修改。"
       echo
-       echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
+       echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
       echo
       ;;
     2)
       local f="${CONF_DIR}/12_ss.json"
       [ -f "$f" ] || die "未检测到 Shadowsocks 配置。"
-      read -rp "新的 SS 密码：" newpass
+      prompt_read "新的 SS 密码：" newpass || die "读取输入失败，请在交互式终端中运行脚本。"
       [ -n "$newpass" ] || die "密码不可为空。"
       jq --arg p "$newpass" '(.. | objects | select(has("password"))).password = $p' "$f" > "${f}.tmp" && mv "${f}.tmp" "$f"
       merge_config
       svc_restart
       ok "Shadowsocks 密码已修改。"
       echo
-      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
       echo
       ;;
     *) die "无效选择" ;;
@@ -651,7 +664,8 @@ change_user_cred() {
 # ---------- 8) 卸载 ----------
 uninstall_all() {
   warn "即将卸载 sing-box 及其所有配置与服务文件。"
-  read -rp "确认卸载？(y/N): " y
+  prompt_read "确认卸载？(y/N): " y || die "读取输入失败，请在交互式终端中运行脚本。"
+  y="${y//[[:space:]]/}"
   [[ "${y,,}" == "y" ]] || { echo "已取消。"; return; }
   if command -v systemctl >/dev/null 2>&1; then
     systemctl stop sing-box 2>/dev/null || true
@@ -675,7 +689,7 @@ show_generated_links() {
   echo " 已生成的链接与二维码"
   echo "=============================="
   echo
-  ensure_qrencode
+  ensure_qrencode || true
   local found_any=false
 
   # --- VLESS Reality ---
@@ -696,7 +710,7 @@ show_generated_links() {
     if command -v qrencode >/dev/null 2>&1; then
       qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
       echo
-      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
       echo
     else
       warn "未检测到 qrencode，无法生成二维码。"
@@ -726,7 +740,7 @@ show_generated_links() {
     if command -v qrencode >/dev/null 2>&1; then
       qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
       echo
-      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
       echo
     else
       warn "未检测到 qrencode，无法生成二维码。"
@@ -751,7 +765,7 @@ show_generated_links() {
     if command -v qrencode >/dev/null 2>&1; then
       qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
       echo
-      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
       echo  
     else
       warn "未检测到 qrencode，无法生成二维码。"
@@ -766,24 +780,24 @@ show_generated_links() {
 
 # ---------- 快捷命令 ----------
 install_shortcut() {
-  local cmd_path="/usr/local/bin/menu11"
+  local cmd_path="/usr/local/bin/menu"
 
   # Create shortcut script
   cat > "$cmd_path" <<'EOF'
 #!/usr/bin/env bash
-bash <(curl -Ls https://raw.githubusercontent.com/dabadabader/install/testing/installer.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/dabadabader/install/main/installer.sh)
 EOF
 
   chmod +x "$cmd_path"
 
   # Show message clearly to user
-  echo -e "\033[32m\033[01m❔重新打开测试安装菜单请输入：\033[0m\033[33mmenu11\033[0m"
+  echo -e "\033[32m\033[01m❔重新打开安装菜单请输入：\033[0m\033[33mmenu\033[0m"
 }
-
 
 
 # ---------- 主菜单 ----------
 main_menu() {
+  while true; do
   clear
 
   LINK="${ESC}]8;;https://wepc.au${ESC}\\${YELLOW}wepc.au${RESET}${ESC}]8;;${ESC}\\"
@@ -798,10 +812,6 @@ LINK_PINGIP="${ESC}]8;;https://pingip.cn${ESC}\\${YELLOW}pingip.cn${RESET}${ESC}
 echo -e "==================================="
 echo -e "    ${GREEN}查询IP可以使用:${RESET}  ${LINK_PINGIP}"
 echo -e "==================================="
-echo
- echo -e "\033[1m\033[31m*******************************\033[0m"
-  echo -e "\033[1m\033[31m          测试版            \033[0m"
-  echo -e "\033[1m\033[31m*******************************\033[0m"
   echo
     echo "1) 安装 VLESS + TCP + Reality (直连选这里)"
   echo "2) 安装 VMESS + WS (软路由选这里)"
@@ -813,7 +823,8 @@ echo
   echo "8) 查看已生成的链接"
   echo "9) 退出"
   echo
-  read -rp "请选择 [1-9]: " opt
+  prompt_read "请选择 [1-9]: " opt || die "读取输入失败，请在交互式终端中运行脚本。"
+  opt="${opt//[[:space:]]/}"
   case "$opt" in
     1) install_vless_tcp_reality ;;
     2) install_vmess_ws ;;
@@ -839,5 +850,3 @@ install_shortcut
 auto_cleanup_old_configs
 merge_config
 main_menu
-
-
