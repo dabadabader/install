@@ -843,10 +843,6 @@ echo
     *) echo "无效选择";;
   esac
 
-  echo
-  prompt_read "按回车返回主菜单，或输入 q 退出：" opt || exit 0
-  opt="${opt//[[:space:]]/}"
-  [[ "${opt,,}" == "q" ]] && exit 0
   done
 }
 
