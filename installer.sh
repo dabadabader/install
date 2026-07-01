@@ -427,7 +427,7 @@ EOF
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
     echo
-     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
   echo
   else
     warn "未检测到 qrencode，无法生成二维码。"
@@ -507,7 +507,7 @@ EOF
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
     echo
-     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
   echo
   else
     warn "未检测到 qrencode，无法生成二维码。"
@@ -563,7 +563,7 @@ EOF
   if command -v qrencode >/dev/null 2>&1; then
     qrencode -t ANSIUTF8 -m 1 -s 1 "$clean_link"
     echo
-     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+     echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
     echo
   else
     warn "未检测到 qrencode，无法生成二维码。"
@@ -580,7 +580,7 @@ enable_bbr() {
   sysctl net.ipv4.tcp_congestion_control
   ok "BBR 处理完成。"
   echo
-   echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+   echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
   echo
 }
 
@@ -616,7 +616,7 @@ change_port() {
 
   ok "端口已修改为: $PORT"
   echo
-  echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+  echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
   echo
 }
 
@@ -641,7 +641,7 @@ change_user_cred() {
       svc_restart
       ok "VLESS UUID 已修改。"
       echo
-       echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+       echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
       echo
       ;;
     2)
@@ -654,7 +654,7 @@ change_user_cred() {
       svc_restart
       ok "Shadowsocks 密码已修改。"
       echo
-      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
       echo
       ;;
     *) die "无效选择" ;;
@@ -710,7 +710,7 @@ show_generated_links() {
     if command -v qrencode >/dev/null 2>&1; then
       qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
       echo
-      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
       echo
     else
       warn "未检测到 qrencode，无法生成二维码。"
@@ -740,7 +740,7 @@ show_generated_links() {
     if command -v qrencode >/dev/null 2>&1; then
       qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
       echo
-      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
       echo
     else
       warn "未检测到 qrencode，无法生成二维码。"
@@ -765,7 +765,7 @@ show_generated_links() {
     if command -v qrencode >/dev/null 2>&1; then
       qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
       echo
-      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
+      echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu11\033[0m"
       echo  
     else
       warn "未检测到 qrencode，无法生成二维码。"
@@ -780,19 +780,20 @@ show_generated_links() {
 
 # ---------- 快捷命令 ----------
 install_shortcut() {
-  local cmd_path="/usr/local/bin/menu"
+  local cmd_path="/usr/local/bin/menu11"
 
   # Create shortcut script
   cat > "$cmd_path" <<'EOF'
 #!/usr/bin/env bash
-bash <(curl -Ls https://raw.githubusercontent.com/dabadabader/install/main/installer.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/dabadabader/install/testing/installer.sh)
 EOF
 
   chmod +x "$cmd_path"
 
   # Show message clearly to user
-  echo -e "\033[32m\033[01m❔重新打开安装菜单请输入：\033[0m\033[33mmenu\033[0m"
+  echo -e "\033[32m\033[01m❔重新打开测试安装菜单请输入：\033[0m\033[33mmenu11\033[0m"
 }
+
 
 
 # ---------- 主菜单 ----------
@@ -812,6 +813,10 @@ LINK_PINGIP="${ESC}]8;;https://pingip.cn${ESC}\\${YELLOW}pingip.cn${RESET}${ESC}
 echo -e "==================================="
 echo -e "    ${GREEN}查询IP可以使用:${RESET}  ${LINK_PINGIP}"
 echo -e "==================================="
+echo
+ echo -e "\033[1m\033[31m*******************************\033[0m"
+  echo -e "\033[1m\033[31m          测试版            \033[0m"
+  echo -e "\033[1m\033[31m*******************************\033[0m"
   echo
     echo "1) 安装 VLESS + TCP + Reality (直连选这里)"
   echo "2) 安装 VMESS + WS (软路由选这里)"
@@ -838,6 +843,12 @@ echo -e "==================================="
     *) echo "无效选择";;
   esac
 
+  echo
+  prompt_read "按回车返回主菜单，或输入 q 退出：" opt || exit 0
+  opt="${opt//[[:space:]]/}"
+  [[ "${opt,,}" == "q" ]] && exit 0
+  done
+
 }
 
 
@@ -850,3 +861,4 @@ install_shortcut
 auto_cleanup_old_configs
 merge_config
 main_menu
+
