@@ -791,7 +791,7 @@ EOF
   chmod +x "$cmd_path"
 
   # Show message clearly to user
-  echo -e "\033[32m\033[01m❔重新打开测试安装菜单请输入：\033[0m\033[33mmenu11\033[0m"
+  echo -e "\033[32m\033[01m重新打开测试安装菜单请输入：\033[0m\033[33mmenu11\033[0m"
 }
 
 
