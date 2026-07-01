@@ -798,7 +798,6 @@ EOF
 
 # ---------- 主菜单 ----------
 main_menu() {
-  while true; do
   clear
 
   LINK="${ESC}]8;;https://wepc.au${ESC}\\${YELLOW}wepc.au${RESET}${ESC}]8;;${ESC}\\"
@@ -842,8 +841,6 @@ echo
     9) exit 0 ;;
     *) echo "无效选择";;
   esac
-
-  done
 }
 
 # ---------- 引导 ----------
