@@ -419,7 +419,7 @@ EOF
 
 
   ensure_qrencode || true
-  link="vless://${UUID}@${SERVER_IP}:${PORT}?encryption=none&security=reality&sni=${TLS_DOMAIN}&fp=chrome&pbk=${pub}&type=tcp#VLESS-REALITY"
+  link="vless://${UUID}@${SERVER_IP}:${PORT}?encryption=none&security=reality&sni=${TLS_DOMAIN}&fp=chrome&pbk=${pub}&type=tcp#VLESS-${SERVER_IP}"
   clean_link=$(echo -n "$link" | tr -d '\r\n')
   echo "导入链接："
   echo "$clean_link"
@@ -493,8 +493,8 @@ EOF
   ok "✅ VMESS + WS 已安装完成"
 
   ensure_qrencode || true
-  json=$(printf '{"v":"2","ps":"VMESS-WS","add":"%s","port":"%s","id":"%s","aid":"0","net":"ws","type":"none","host":"","path":"%s","tls":""}' \
-        "$SERVER_IP" "$PORT" "$UUID" "$path")
+  json=$(printf '{"v":"2","ps":"VMESS-%s","add":"%s","port":"%s","id":"%s","aid":"0","net":"ws","type":"none","host":"","path":"%s","tls":""}' \
+        "$SERVER_IP" "$SERVER_IP" "$PORT" "$UUID" "$path")
   b64=$(echo -n "$json" | base64 -w0)
 
   link="vmess://${b64}"
@@ -553,7 +553,7 @@ EOF
   ensure_qrencode || true
   local b64
   b64="$(printf '%s' "${method}:${SS_PASS}@${SERVER_IP}:${PORT}" | base64 | tr -d '\n')"
-  link="ss://${b64}#Shadowsocks"
+  link="ss://${b64}#SS-${SERVER_IP}"
   clean_link=$(echo -n "$link" | tr -d '\r\n')
 
   echo "导入链接："
@@ -702,7 +702,7 @@ show_generated_links() {
     sni=$(jq -r '..|objects|select(has("server_name"))|.server_name' "$f1" | head -n1)
     pub=$(cat "${CONF_DIR}/reality_public.key" 2>/dev/null || echo "")
     server_ip=$(curl -s https://api.ip.sb/ip || echo "YOUR_IP")
-    link="vless://${uuid}@${server_ip}:${port}?encryption=none&security=reality&sni=${sni}&fp=chrome&pbk=${pub}&type=tcp#VLESS-REALITY"
+    link="vless://${uuid}@${server_ip}:${port}?encryption=none&security=reality&sni=${sni}&fp=chrome&pbk=${pub}&type=tcp#VLESS-${server_ip}"
 
     echo "🔹 VLESS Reality"
     echo -e "${YELLOW}${link}${RESET}"
@@ -729,8 +729,8 @@ show_generated_links() {
     
     # Generate VMESS link (not VLESS)
     local json b64
-    json=$(printf '{"v":"2","ps":"VMESS-WS","add":"%s","port":"%s","id":"%s","aid":"0","net":"ws","type":"none","host":"","path":"%s","tls":""}' \
-          "$server_ip" "$port" "$uuid" "$path")
+    json=$(printf '{"v":"2","ps":"VMESS-%s","add":"%s","port":"%s","id":"%s","aid":"0","net":"ws","type":"none","host":"","path":"%s","tls":""}' \
+          "$server_ip" "$server_ip" "$port" "$uuid" "$path")
     b64=$(echo -n "$json" | base64 -w0)
     link="vmess://${b64}"
 
@@ -757,7 +757,7 @@ show_generated_links() {
     method=$(jq -r '..|objects|select(has("method"))|.method' "$f3" | head -n1)
     server_ip=$(curl -s https://api.ip.sb/ip || echo "YOUR_IP")
     b64=$(printf '%s' "${method}:${pass}@${server_ip}:${port}" | base64 | tr -d '\n')
-    link="ss://${b64}#Shadowsocks"
+    link="ss://${b64}#SS-${server_ip}"
 
     echo "🔹 Shadowsocks"
     echo -e "${YELLOW}${link}${RESET}"
