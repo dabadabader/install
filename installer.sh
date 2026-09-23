@@ -27,6 +27,7 @@ err()    { echo -e "\033[31m\033[01m$*\033[0m" >&2; }
 ESC=$(printf '\033')
 YELLOW="${ESC}[33m"
 GREEN="${ESC}[32m"
+CYAN="${ESC}[36m"
 RED="${ESC}[31m"
 RESET="${ESC}[0m"
 die()    { err "$*"; exit 1; }
@@ -301,10 +302,7 @@ merge_config() {
     cat > "${CONF_DIR}/00_base.json" <<EOF
 {
   "log": {
-    "disabled": false,
-    "level": "info",
-    "output": "${LOG_DIR}/sing-box.log",
-    "timestamp": true
+    "disabled": true
   },
   "dns": {
     "servers": [ { "type": "local" } ],
@@ -313,6 +311,12 @@ merge_config() {
   "outbounds": [ { "type": "direct", "tag": "direct" } ]
 }
 EOF
+  fi
+
+  # Disable sing-box runtime logging by default to avoid connection logs growing on disk.
+  if [ -f "${CONF_DIR}/00_base.json" ]; then
+    jq '.log = {"disabled": true}' "${CONF_DIR}/00_base.json" > "${CONF_DIR}/00_base.json.tmp" \
+      && mv "${CONF_DIR}/00_base.json.tmp" "${CONF_DIR}/00_base.json"
   fi
 
   # --- Safe merge for jq 1.6 ---
@@ -801,14 +805,15 @@ main_menu() {
   clear
 
   LINK="${ESC}]8;;https://wepc.au${ESC}\\${YELLOW}wepc.au${RESET}${ESC}]8;;${ESC}\\"
-LINK_PINGIP="${ESC}]8;;https://pingip.cn${ESC}\\${YELLOW}pingip.cn${RESET}${ESC}]8;;${ESC}\\"
+  LINK_NEEMO="${ESC}]8;;https://neemo.au${ESC}\\${CYAN}neemo.au${RESET}${ESC}]8;;${ESC}\\"
+  LINK_PINGIP="${ESC}]8;;https://pingip.cn${ESC}\\${YELLOW}pingip.cn${RESET}${ESC}]8;;${ESC}\\"
 
 
-  echo -e "${YELLOW}┌─────────────────────────────────┐${RESET}"
-  echo -e "${YELLOW}│${RESET}   ${LINK} | ${LINK} | ${LINK}   ${YELLOW}│"
-  echo -e "${YELLOW}│${RESET}     ${GREEN}覆盖全球的TikTok服务商${RESET}      ${YELLOW}│"
-  echo -e "${YELLOW}│${RESET}       ${GREEN}提供各国原生家宽IP${RESET}        ${YELLOW}│"
-  echo -e "${YELLOW}└─────────────────────────────────┘${RESET}"        
+  echo -e "${YELLOW}┌─────────────────────────────────┐${RESET} ${CYAN}┌─────────────────────────────────┐${RESET}"
+  echo -e "${YELLOW}│${RESET}   ${LINK} | ${LINK} | ${LINK}   ${YELLOW}│${RESET} ${CYAN}│${RESET}            ${LINK_NEEMO}             ${CYAN}│${RESET}"
+  echo -e "${YELLOW}│${RESET}     ${GREEN}覆盖全球的TikTok服务商${RESET}      ${YELLOW}│${RESET} ${CYAN}│${RESET}      ${GREEN}VPS管理工具 一键SSH连接${RESET}    ${CYAN}│${RESET}"
+  echo -e "${YELLOW}│${RESET}       ${GREEN}提供各国原生家宽IP${RESET}        ${YELLOW}│${RESET} ${CYAN}│${RESET}   ${GREEN}一站式网络搭建 + 代理配置${RESET}     ${CYAN}│${RESET}"
+  echo -e "${YELLOW}└─────────────────────────────────┘${RESET} ${CYAN}└─────────────────────────────────┘${RESET}"        
 echo -e "==================================="
 echo -e "    ${GREEN}查询IP可以使用:${RESET}  ${LINK_PINGIP}"
 echo -e "==================================="
