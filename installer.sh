@@ -11,6 +11,7 @@ CONF_DIR="${WORK_DIR}/conf"
 DEFAULT_PORT_REALITY=$((RANDOM % 50001 + 10000))
 DEFAULT_PORT_WS=$((RANDOM % 50001 + 10000))
 DEFAULT_PORT_SS=$((RANDOM % 50001 + 10000))
+DEFAULT_PORT_SOCKS=$((RANDOM % 50001 + 10000))
 TLS_SERVER_DEFAULT='addons.mozilla.org'
 DEFAULT_NEWEST_VERSION='1.13.0-rc.4'
 export DEBIAN_FRONTEND=noninteractive
@@ -277,6 +278,7 @@ auto_cleanup_old_configs() {
     "10_vless_tcp_reality.json"
     "12_ss.json"
     "13_vmess_ws.json"
+    "14_socks5.json"
   )
 
   for f in "$CONF_DIR"/*.json; do
@@ -574,6 +576,65 @@ EOF
   fi
 }
 
+# ---------- 安装 SOCKS5 ----------
+read_socks_credentials() {
+  local default_user default_pass
+  default_user=$(openssl rand -hex 8)
+  default_pass=$(openssl rand -hex 16)
+  prompt_read "SOCKS5 用户名 [按回车自动生成]： " SOCKS_USER || die "读取输入失败。"
+  SOCKS_USER="${SOCKS_USER:-$default_user}"
+  prompt_read "SOCKS5 密码 [按回车自动生成]： " SOCKS_PASS || die "读取输入失败。"
+  SOCKS_PASS="${SOCKS_PASS:-$default_pass}"
+  # SOCKS5 用户名和密码字段长度为 1~255 字节。
+  local LC_ALL=C
+  (( ${#SOCKS_USER} <= 255 && ${#SOCKS_PASS} <= 255 )) || die "用户名和密码不可超过 255 字节。"
+}
+
+show_socks_link() {
+  local file="${CONF_DIR}/14_socks5.json"
+  local username password port host link
+  username=$(jq -r '.inbounds[0].users[0].username' "$file")
+  password=$(jq -r '.inbounds[0].users[0].password' "$file")
+  port=$(jq -r '.inbounds[0].listen_port' "$file")
+  host="$SERVER_IP"
+  [[ "$host" == *:* ]] && host="[$host]"
+  link="socks5://$(jq -rn --arg v "$username" '$v|@uri'):$(jq -rn --arg v "$password" '$v|@uri')@${host}:${port}"
+  echo "🔹 SOCKS5"
+  echo "导入链接："
+  printf '%s\n' "$link"
+  echo
+  if command -v qrencode >/dev/null 2>&1; then
+    qrencode -t ANSIUTF8 -m 1 -s 1 "$link"
+    echo
+  else
+    warn "未检测到 qrencode，无法生成二维码。"
+  fi
+}
+
+install_socks5() {
+  ok "开始安装 SOCKS5"
+  ensure_singbox
+  ensure_systemd_service
+  read_ip_default
+  DEFAULT_PORT_SOCKS=$(find_free_port "$DEFAULT_PORT_SOCKS")
+  read_port "监听端口" "$DEFAULT_PORT_SOCKS"
+  PORT=$(find_free_port "$PORT")
+  read_socks_credentials
+  local file="${CONF_DIR}/14_socks5.json"
+  jq -n --argjson port "$PORT" --arg user "$SOCKS_USER" --arg pass "$SOCKS_PASS" '
+    {inbounds: [{type: "socks", tag: "socks5", listen: "::", listen_port: $port,
+      users: [{username: $user, password: $pass}]}]}
+  ' > "${file}.tmp"
+  chmod 600 "${file}.tmp"
+  mv "${file}.tmp" "$file"
+  enable_bbr
+  merge_config
+  svc_restart
+  ok "✅ SOCKS5 已安装完成"
+  ensure_qrencode || true
+  show_socks_link
+}
+
 # ---------- 5) 启用 BBR ----------
 enable_bbr() {
   ok "启用 BBR..."
@@ -595,12 +656,14 @@ change_port() {
   echo "1) VLESS Reality"
   echo "2) VMESS WS"
   echo "3) Shadowsocks"
-  prompt_read "输入 1/2/3：" which || die "读取输入失败，请在交互式终端中运行脚本。"
+  echo "4) SOCKS5"
+  prompt_read "输入 1/2/3/4：" which || die "读取输入失败，请在交互式终端中运行脚本。"
   which="${which//[[:space:]]/}"
   case "$which" in
     1) file="${CONF_DIR}/10_vless_tcp_reality.json" ;;
     2) file="${CONF_DIR}/13_vmess_ws.json" ;;
     3) file="${CONF_DIR}/12_ss.json" ;;
+    4) file="${CONF_DIR}/14_socks5.json" ;;
     *) die "无效选择" ;;
   esac
 
@@ -630,7 +693,8 @@ change_user_cred() {
   echo "选择要修改凭据的协议："
   echo "1) VLESS（Reality + WS 会同时修改 UUID）"
   echo "2) Shadowsocks 密码"
-  prompt_read "输入 1/2：" which || die "读取输入失败，请在交互式终端中运行脚本。"
+  echo "3) SOCKS5 用户名/密码"
+  prompt_read "输入 1/2/3：" which || die "读取输入失败，请在交互式终端中运行脚本。"
   which="${which//[[:space:]]/}"
   case "$which" in
     1)
@@ -660,6 +724,18 @@ change_user_cred() {
       echo
       echo -e "\033[32m\033[01m如果需要重新打开安装菜单，请输入：\033[0m\033[33mmenu\033[0m"
       echo
+      ;;
+    3)
+      local f="${CONF_DIR}/14_socks5.json"
+      [ -f "$f" ] || die "未检测到 SOCKS5 配置。"
+      read_socks_credentials
+      jq --arg u "$SOCKS_USER" --arg p "$SOCKS_PASS" \
+        '.inbounds[0].users = [{username: $u, password: $p}]' "$f" > "${f}.tmp"
+      chmod 600 "${f}.tmp"
+      mv "${f}.tmp" "$f"
+      merge_config
+      svc_restart
+      ok "SOCKS5 用户名/密码已修改。"
       ;;
     *) die "无效选择" ;;
   esac
@@ -776,6 +852,12 @@ show_generated_links() {
     fi
   fi
 
+  if [ -f "${CONF_DIR}/14_socks5.json" ]; then
+    found_any=true
+    read_ip_default
+    show_socks_link
+  fi
+
   if [ "$found_any" = false ]; then
     warn "未检测到任何已安装的协议配置。"
   fi
@@ -802,10 +884,11 @@ EOF
 
 # ---------- 主菜单 ----------
 main_menu() {
-  clear
+  # 保留之前运行的终端输出，方便向上滚动查看链接和安装记录。
+  printf '\n'
 
   LINK="${ESC}]8;;https://wepc.au${ESC}\\${YELLOW}wepc.au${RESET}${ESC}]8;;${ESC}\\"
-  LINK_NEEMO="${ESC}]8;;https://neemo.au${ESC}\\${CYAN}neemo.au${RESET}${ESC}]8;;${ESC}\\"
+  LINK_NEEMO="${ESC}]8;;https://neemo.au/ref-sc${ESC}\\${CYAN}neemo.au${RESET}${ESC}]8;;${ESC}\\"
   LINK_PINGIP="${ESC}]8;;https://pingip.cn${ESC}\\${YELLOW}pingip.cn${RESET}${ESC}]8;;${ESC}\\"
 
 
@@ -821,25 +904,27 @@ echo -e "==================================="
     echo "1) 安装 VLESS + TCP + Reality (直连选这里)"
   echo "2) 安装 VMESS + WS (软路由选这里)"
   echo "3) 安装 Shadowsocks (明文协议, IP容易被墙, 不建议使用)"
-  echo "4) 启用 BBR 加速 (已自动启用)"
-  echo "5) 修改端口"
-  echo "6) 修改用户名/密码"
-  echo "7) 卸载脚本"
-  echo "8) 查看已生成的链接"
-  echo "9) 退出"
+  echo "4) 安装 SOCKS5"
+  echo "5) 启用 BBR 加速 (已自动启用)"
+  echo "6) 修改端口"
+  echo "7) 修改用户名/密码"
+  echo "8) 卸载脚本"
+  echo "9) 查看已生成的链接"
+  echo "10) 退出"
   echo
-  prompt_read "请选择 [1-9]: " opt || die "读取输入失败，请在交互式终端中运行脚本。"
+  prompt_read "请选择 [1-10]: " opt || die "读取输入失败，请在交互式终端中运行脚本。"
   opt="${opt//[[:space:]]/}"
   case "$opt" in
     1) install_vless_tcp_reality ;;
     2) install_vmess_ws ;;
     3) install_shadowsocks ;;
-    4) enable_bbr ;;
-    5) change_port ;;
-    6) change_user_cred ;;
-    7) uninstall_all ;;
-    8) show_generated_links ;;
-    9) exit 0 ;;
+    4) install_socks5 ;;
+    5) enable_bbr ;;
+    6) change_port ;;
+    7) change_user_cred ;;
+    8) uninstall_all ;;
+    9) show_generated_links ;;
+    10) exit 0 ;;
     *) echo "无效选择";;
   esac
 }
