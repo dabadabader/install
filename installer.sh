@@ -160,7 +160,7 @@ ensure_singbox() {
   if [ -n "$GH_PROXY" ]; then
     ok "尝试通过代理下载..."
     wget -q --timeout=30 --tries=2 -O "$tarball" "${GH_PROXY}${official_url}" || {
-      warn "代理下载失败，尝试直接下载..."
+      # warn "代理下载失败，尝试直接下载..."
       wget -q --timeout=30 --tries=2 -O "$tarball" "$official_url" || die "下载 sing-box 失败"
     }
   else
@@ -187,13 +187,13 @@ ensure_qrencode() {
 
   if command -v apt >/dev/null 2>&1; then
     if ! DEBIAN_FRONTEND=noninteractive apt install -y qrencode >>"$qr_log" 2>&1; then
-      warn "直接安装失败，尝试更新软件后重试..."
+      # warn "直接安装失败，正在重试..."
       if ! apt update >"$qr_log" 2>&1; then
-        warn "apt update 失败，尝试同步系统时间..."
+        warn "尝试同步系统时间..."
         sync_system_time
 
         if ! apt update >>"$qr_log" 2>&1; then
-          warn "apt update 仍然失败，跳过二维码功能。"
+          warn "apt update 失败，跳过二维码功能。"
           return 1
         fi
       fi
